@@ -209,7 +209,7 @@ class routerOBP(OPENBRIDGE):
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
-        _bits = int_id(_data[15])
+        _bits = _data[15]
 
         if _call_type == 'group':
             # Is this a new call stream?
@@ -468,7 +468,7 @@ class routerHBP(HBSYSTEM):
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
-        _bits = int_id(_data[15])
+        _bits = _data[15]
 
         if _call_type == 'group':
 

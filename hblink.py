@@ -315,7 +315,7 @@ class HBSYSTEM(DatagramProtocol):
                 _seq = _data[4]
                 _rf_src = _data[5:8]
                 _dst_id = _data[8:11]
-                _bits = int_id(_data[15])
+                _bits = _data[15]
                 _slot = 2 if (_bits & 0x80) else 1
                 #_call_type = 'unit' if (_bits & 0x40) else 'group'
                 if _bits & 0x40:
@@ -374,7 +374,7 @@ class HBSYSTEM(DatagramProtocol):
                     for _peer in self._peers:
                         if _peer != _peer_id:
                             pkt[1] = _peer
-                            self.transport.write(''.join(pkt), self._peers[_peer]['SOCKADDR'])
+                            self.transport.write(b''.join(pkt), self._peers[_peer]['SOCKADDR'])
                             #logger.debug('(%s) Packet on TS%s from %s (%s) for destination ID %s repeated to peer: %s (%s) [Stream ID: %s]', self._system, _slot, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id), int_id(_dst_id), self._peers[_peer]['CALLSIGN'], int_id(_peer), int_id(_stream_id))
 
 
@@ -708,7 +708,7 @@ class reportFactory(Factory):
             client.sendString(_message)
 
     def send_config(self):
-        serialized = pickle.dumps(self._config['SYSTEMS'], protocol=pickle.HIGHEST_PROTOCOL)
+        serialized = pickle.dumps(self._config['SYSTEMS'], protocol=2) #pickle.HIGHEST_PROTOCOL)
         self.send_clients(REPORT_OPCODES['CONFIG_SND']+serialized)
 
 

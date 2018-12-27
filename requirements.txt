@@ -1,0 +1,4 @@
+bitstring>=3.1.5
+bitarray>=0.8.1
+Twisted>=16.3.0
+dmr_utils3>=0.1.19

@@ -48,7 +48,7 @@ from twisted.internet import reactor, task
 # Other files we pull from -- this is mostly for readability and segmentation
 import log
 import config
-import const
+from const import *
 from dmr_utils3.utils import int_id, hex_str_4, try_download, mk_id_dict
 
 # Imports for the reporting server

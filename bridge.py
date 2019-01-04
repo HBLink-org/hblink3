@@ -43,7 +43,7 @@ from twisted.internet import reactor, task
 
 # Things we import from the main hblink module
 from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, mk_aliases
-from dmr_utils3.utils import hex_str_3, int_id, get_alias
+from dmr_utils3.utils import bytes_3, int_id, get_alias
 from dmr_utils3 import decode, bptc, const
 import config
 import log
@@ -107,11 +107,11 @@ def make_bridges(_hb_confbridge_bridges):
             if _system['SYSTEM'] not in CONFIG['SYSTEMS']:
                 sys.exit('ERROR: Conference bridges found for system not configured main configuration')
 
-            _system['TGID']       = hex_str_3(_system['TGID'])
+            _system['TGID']       = bytes_3(_system['TGID'])
             for i, e in enumerate(_system['ON']):
-                _system['ON'][i]  = hex_str_3(_system['ON'][i])
+                _system['ON'][i]  = bytes_3(_system['ON'][i])
             for i, e in enumerate(_system['OFF']):
-                _system['OFF'][i] = hex_str_3(_system['OFF'][i])
+                _system['OFF'][i] = bytes_3(_system['OFF'][i])
             _system['TIMEOUT']    = _system['TIMEOUT']*60
             if _system['ACTIVE'] == True:
                 _system['TIMER']  = time() + _system['TIMEOUT']
@@ -151,7 +151,7 @@ def rule_timer_loop():
                 logger.debug('Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
 
     if CONFIG['REPORTS']['REPORT']:
-        report_server.send_clients('bridge updated')
+        report_server.send_clients(b'bridge updated')
 
 
 # run this every 10 seconds to trim orphaned stream ids
@@ -169,7 +169,7 @@ def stream_trimmer_loop():
                     logger.info('(%s) *TIME OUT*  RX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %s', \
                         system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_RFS']), int_id(_slot['RX_TGID']), slot, _slot['RX_TIME'] - _slot['RX_START'])
                     if CONFIG['REPORTS']['REPORT']:
-                        systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_PEER']), int_id(_slot['RX_RFS']), slot, int_id(_slot['RX_TGID']), _slot['RX_TIME'] - _slot['RX_START']))
+                        systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_PEER']), int_id(_slot['RX_RFS']), slot, int_id(_slot['RX_TGID']), _slot['RX_TIME'] - _slot['RX_START']).encode(encoding='utf-8', errors='ignore'))
 
             for slot in range(1,3):
                 _slot  = systems[system].STATUS[slot]
@@ -178,7 +178,7 @@ def stream_trimmer_loop():
                     logger.info('(%s) *TIME OUT*  TX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %s', \
                         system, int_id(_slot['TX_STREAM_ID']), int_id(_slot['TX_RFS']), int_id(_slot['TX_TGID']), slot, _slot['TX_TIME'] - _slot['TX_START'])
                     if CONFIG['REPORTS']['REPORT']:
-                        systems[system]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['TX_STREAM_ID']), int_id(_slot['TX_PEER']), int_id(_slot['TX_RFS']), slot, int_id(_slot['TX_TGID']), _slot['TX_TIME'] - _slot['TX_START']))
+                        systems[system]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['TX_STREAM_ID']), int_id(_slot['TX_PEER']), int_id(_slot['TX_RFS']), slot, int_id(_slot['TX_TGID']), _slot['TX_TIME'] - _slot['TX_START']).encode(encoding='utf-8', errors='ignore'))
 
         # OBP systems
         # We can't delete items from a dicationry that's being iterated, so we have to make a temporarly list of entrys to remove later
@@ -194,7 +194,7 @@ def stream_trimmer_loop():
                     logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %s', \
                         system, int_id(stream_id), get_alias(int_id(_system['RFS']), subscriber_ids), get_alias(int_id(_config['NETWORK_ID']), peer_ids), get_alias(int_id(_system['TGID']), talkgroup_ids), _system['LAST'] - _system['START'])
                     if CONFIG['REPORTS']['REPORT']:
-                            systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_config['NETWORK_ID']), int_id(_system['RFS']), 1, int_id(_system['TGID']), _system['LAST'] - _system['START']))
+                            systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_config['NETWORK_ID']), int_id(_system['RFS']), 1, int_id(_system['TGID']), _system['LAST'] - _system['START']).encode(encoding='utf-8', errors='ignore'))
                     removed = systems[system].STATUS.pop(stream_id)
                 else:
                     logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
@@ -236,7 +236,7 @@ class routerOBP(OPENBRIDGE):
                 logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 if CONFIG['REPORTS']['REPORT']:
-                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)))
+                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
             self.STATUS[_stream_id]['LAST'] = pkt_time
 
@@ -283,7 +283,7 @@ class routerOBP(OPENBRIDGE):
                                     _tmp_bits = _bits & ~(1 << 7)
 
                                     # Assemble transmit HBP packet header
-                                    _tmp_data = _data[:8] + _target['TGID'] + _data[11:15] + chr(_tmp_bits) + _data[16:20]
+                                    _tmp_data = _data[:8] + _target['TGID'] + _data[11:15] + _tmp_bits.to_bytes(1, 'big') + _data[16:20]
 
                                     # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                     # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
@@ -350,7 +350,7 @@ class routerOBP(OPENBRIDGE):
                                         logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                         logger.info('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                         if CONFIG['REPORTS']['REPORT']:
-                                           systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])))
+                                           systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
 
                                     # Set other values for the contention handler to test next time there is a frame to forward
                                     _target_status[_target['TS']]['TX_TIME'] = pkt_time
@@ -363,7 +363,7 @@ class routerOBP(OPENBRIDGE):
                                         _tmp_bits = _bits
 
                                     # Assemble transmit HBP packet header
-                                    _tmp_data = _data[:8] + _target['TGID'] + _data[11:15] + chr(_tmp_bits) + _data[16:20]
+                                    _tmp_data = _data[:8] + _target['TGID'] + _data[11:15] + _tmp_bits.to_bytes(1, 'big') + _data[16:20]
 
                                     # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                     # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
@@ -377,12 +377,12 @@ class routerOBP(OPENBRIDGE):
                                     elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                                         dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
                                         if CONFIG['REPORTS']['REPORT']:
-                                           systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), 1))
+                                           systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), 1).encode(encoding='utf-8', errors='ignore'))
                                     # Create a Burst B-E packet (Embedded LC)
                                     elif _dtype_vseq in [1,2,3,4]:
                                         dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                                     dmrpkt = dmrbits.tobytes()
-                                    _tmp_data = _tmp_data + dmrpkt + '\x00\x00' # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
+                                    _tmp_data = _tmp_data + dmrpkt + b'\x00\x00' # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
 
                                 # Transmit the packet to the destination system
                                 systems[_target['SYSTEM']].send_system(_tmp_data)
@@ -396,7 +396,7 @@ class routerOBP(OPENBRIDGE):
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 if CONFIG['REPORTS']['REPORT']:
-                   self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration))
+                   self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
                 removed = self.STATUS.pop(_stream_id)
                 logger.debug('(%s) OpenBridge sourced call stream end, remove terminated Stream ID: %s', self._system, int_id(_stream_id))
                 if not removed:
@@ -483,7 +483,7 @@ class routerHBP(HBSYSTEM):
                 logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 if CONFIG['REPORTS']['REPORT']:
-                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)))
+                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
@@ -539,7 +539,7 @@ class routerHBP(HBSYSTEM):
                                         _tmp_bits = _bits & ~(1 << 7)
 
                                         # Assemble transmit HBP packet header
-                                        _tmp_data = _data[:8] + _target['TGID'] + _data[11:15] + chr(_tmp_bits) + _data[16:20]
+                                        _tmp_data = _data[:8] + _target['TGID'] + _data[11:15] + _tmp_bits.to_bytes(1, 'big') + _data[16:20]
 
                                         # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                         # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
@@ -585,8 +585,8 @@ class routerHBP(HBSYSTEM):
                                                 logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
                                             continue
 
-                                        # Is this a new call stream? 
-                                        if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']) or (_target_status[_target['TS']]['TX_RFS'] != _rf_src) or (_target_status[_target['TS']]['TX_TGID'] != _target['TGID']):
+                                        # Is this a new call stream?
+                                        if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                                              # Record the DST TGID and Stream ID
                                              _target_status[_target['TS']]['TX_START'] = pkt_time
                                              _target_status[_target['TS']]['TX_TGID'] = _target['TGID']
@@ -601,7 +601,7 @@ class routerHBP(HBSYSTEM):
                                              logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                              logger.info('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                              if CONFIG['REPORTS']['REPORT']:
-                                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])))
+                                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
 
                                         # Set other values for the contention handler to test next time there is a frame to forward
                                         _target_status[_target['TS']]['TX_TIME'] = pkt_time
@@ -614,7 +614,7 @@ class routerHBP(HBSYSTEM):
                                             _tmp_bits = _bits
 
                                         # Assemble transmit HBP packet header
-                                        _tmp_data = _data[:8] + _target['TGID'] + _data[11:15] + chr(_tmp_bits) + _data[16:20]
+                                        _tmp_data = _data[:8] + _target['TGID'] + _data[11:15] + _tmp_bits.to_bytes(1, 'big') + _data[16:20]
 
                                         # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                         # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
@@ -628,7 +628,7 @@ class routerHBP(HBSYSTEM):
                                         elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                                             dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
                                             if CONFIG['REPORTS']['REPORT']:
-                                               systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), 1))
+                                               systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), 1).encode(encoding='utf-8', errors='ignore'))
                                         # Create a Burst B-E packet (Embedded LC)
                                         elif _dtype_vseq in [1,2,3,4]:
                                             dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
@@ -647,7 +647,7 @@ class routerHBP(HBSYSTEM):
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 if CONFIG['REPORTS']['REPORT']:
-                   self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration))
+                   self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
 
                 #
                 # Begin in-band signalling for call end. This has nothign to do with routing traffic directly.
@@ -721,10 +721,13 @@ class routerHBP(HBSYSTEM):
 class confbridgeReportFactory(reportFactory):
 
     def send_bridge(self):
-        serialized = pickle.dumps(BRIDGES, protocol=pickle.HIGHEST_PROTOCOL)
+        serialized = pickle.dumps(BRIDGES, protocol=2) #.decode("utf-8", errors='ignore')
         self.send_clients(REPORT_OPCODES['BRIDGE_SND']+serialized)
 
     def send_bridgeEvent(self, _data):
+        if isinstance(_data, str):
+            print('bridge event was a string')
+            #_data = _data.decode('utf-8', error='ignore')
         self.send_clients(REPORT_OPCODES['BRDG_EVENT']+_data)
 
 
@@ -772,7 +775,7 @@ if __name__ == '__main__':
     # Set signal handers so that we can gracefully exit if need be
     for sig in [signal.SIGINT, signal.SIGTERM]:
         signal.signal(sig, sig_handler)
-    
+
     # Create the name-number mapping dictionaries
     peer_ids, subscriber_ids, talkgroup_ids = mk_aliases(CONFIG)
 
@@ -806,6 +809,5 @@ if __name__ == '__main__':
     stream_trimmer_task = task.LoopingCall(stream_trimmer_loop)
     stream_trimmer = stream_trimmer_task.start(5)
     stream_trimmer.addErrback(loopingErrHandle)
-    
 
     reactor.run()

@@ -46,7 +46,7 @@ from twisted.internet import reactor, task
 
 # Things we import from the main hblink module
 from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, config_reports, mk_aliases
-from dmr_utils.utils import hex_str_3, int_id, get_alias
+from dmr_utils.utils import bytes_3, int_id, get_alias
 from dmr_utils import decode, bptc, const
 import hb_config
 import hb_log

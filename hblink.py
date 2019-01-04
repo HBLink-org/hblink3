@@ -49,7 +49,7 @@ from twisted.internet import reactor, task
 import log
 import config
 from const import *
-from dmr_utils3.utils import int_id, hex_str_4, try_download, mk_id_dict
+from dmr_utils3.utils import int_id, bytes_4, try_download, mk_id_dict
 
 # Imports for the reporting server
 import pickle as pickle
@@ -141,7 +141,7 @@ class OPENBRIDGE(DatagramProtocol):
         # Keep This Line Commented Unless HEAVILY Debugging!
         #logger.debug('(%s) RX packet from %s -- %s', self._system, _sockaddr, ahex(_packet))
 
-        if _packet[:4] == 'DMRD':    # DMRData -- encapsulated DMR data frame
+        if _packet[:4] == b'DMRD':    # DMRData -- encapsulated DMR data frame
             _data = _packet[:53]
             _hash = _packet[53:]
             _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
@@ -151,7 +151,7 @@ class OPENBRIDGE(DatagramProtocol):
                 _seq = _data[4]
                 _rf_src = _data[5:8]
                 _dst_id = _data[8:11]
-                _bits = int_id(_data[15])
+                _bits = _data[15]
                 _slot = 2 if (_bits & 0x80) else 1
                 #_call_type = 'unit' if (_bits & 0x40) else 'group'
                 if _bits & 0x40:
@@ -414,7 +414,7 @@ class HBSYSTEM(DatagramProtocol):
                         'PACKAGE_ID': '',
                     }})
                     logger.info('(%s) Repeater Logging in with Radio ID: %s, %s:%s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1])
-                    _salt_str = hex_str_4(self._peers[_peer_id]['SALT'])
+                    _salt_str = bytes_4(self._peers[_peer_id]['SALT'])
                     self.send_peer(_peer_id, RPTACK + _salt_str)
                     self._peers[_peer_id]['CONNECTION'] = 'CHALLENGE_SENT'
                     logger.info('(%s) Sent Challenge Response to %s for login: %s', self._system, int_id(_peer_id), self._peers[_peer_id]['SALT'])
@@ -433,7 +433,7 @@ class HBSYSTEM(DatagramProtocol):
                 _this_peer = self._peers[_peer_id]
                 _this_peer['LAST_PING'] = time()
                 _sent_hash = _data[8:]
-                _salt_str = hex_str_4(_this_peer['SALT'])
+                _salt_str = bytes_4(_this_peer['SALT'])
                 _calc_hash = bhex(sha256(_salt_str+self._config['PASSPHRASE']).hexdigest())
                 if _sent_hash == _calc_hash:
                     _this_peer['CONNECTION'] = 'WAITING_CONFIG'
@@ -708,7 +708,7 @@ class reportFactory(Factory):
             client.sendString(_message)
 
     def send_config(self):
-        serialized = pickle.dumps(self._config['SYSTEMS'], protocol=2) #pickle.HIGHEST_PROTOCOL)
+        serialized = pickle.dumps(self._config['SYSTEMS'], protocol=2) #.decode('utf-8', errors='ignore') #pickle.HIGHEST_PROTOCOL)
         self.send_clients(REPORT_OPCODES['CONFIG_SND']+serialized)
 
 
@@ -772,7 +772,7 @@ if __name__ == '__main__':
     logger = log.config_logging(CONFIG['LOGGER'])
     logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018\n\tThe Founding Members of the K0USY Group. All rights reserved.\n')
     logger.debug('Logging system started, anything from here on gets logged')
-    
+
     # Set up the signal handler
     def sig_handler(_signal, _frame):
         logger.info('SHUTDOWN: HBLINK IS TERMINATING WITH SIGNAL %s', str(_signal))
@@ -799,5 +799,5 @@ if __name__ == '__main__':
                 systems[system] = HBSYSTEM(system, CONFIG, report_server)
             reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
             logger.debug('%s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
- 
+
     reactor.run()

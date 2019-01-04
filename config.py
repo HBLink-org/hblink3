@@ -30,7 +30,7 @@ import configparser
 import sys
 import const
 
-from socket import gethostbyname 
+from socket import gethostbyname
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS'
@@ -222,7 +222,7 @@ def build_config(_config_file):
                         'NETWORK_ID': config.getint(section, 'NETWORK_ID').to_bytes(4, 'big'),
                         'IP': gethostbyname(config.get(section, 'IP')),
                         'PORT': config.getint(section, 'PORT'),
-                        'PASSPHRASE': config.get(section, 'PASSPHRASE').ljust(20,'\x00')[:20],
+                        'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE').ljust(20,'\x00')[:20], 'utf-8'),
                         'TARGET_SOCK': (gethostbyname(config.get(section, 'TARGET_IP')), config.getint(section, 'TARGET_PORT')),
                         'TARGET_IP': gethostbyname(config.get(section, 'TARGET_IP')),
                         'TARGET_PORT': config.getint(section, 'TARGET_PORT'),

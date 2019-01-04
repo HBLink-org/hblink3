@@ -93,3 +93,5 @@ hblink.cfg
 *.config
 *.bak
 rules.py
+subscriber_ids.csv
+peer_ids.csv

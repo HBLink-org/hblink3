@@ -39,6 +39,9 @@ ID_MAX = 16776415
 # Timers
 STREAM_TO = .360
 
+# Options from the LC - used for late entry
+LC_OPT = b'\x00\x00\x20'
+
 # HomeBrew Protocol Frame Types
 HBPF_VOICE      = 0x0
 HBPF_VOICE_SYNC = 0x1
@@ -50,7 +53,7 @@ HBPF_SLT_VTERM  = 0x2
 DMRD    = b'DMRD'
 MSTCL   = b'MSTCL'
 MSTNAK  = b'MSTNAC'
-MSTPONG  = b'MSTPONG'
+MSTPONG = b'MSTPONG'
 MSTN    = b'MSTN'
 MSTP    = b'MSTP'
 MSTC    = b'MSTC'

@@ -27,8 +27,6 @@ works stand-alone before troubleshooting any applications that use it. It has
 sufficient logging to be used standalone as a troubleshooting application.
 '''
 
-
-
 # Specifig functions from modules we need
 from binascii import b2a_hex as ahex
 from binascii import a2b_hex as bhex
@@ -36,8 +34,6 @@ from random import randint
 from hashlib import sha256, sha1
 from hmac import new as hmac_new, compare_digest
 from time import time
-from bitstring import BitArray
-from importlib import import_module
 from collections import deque
 
 # Twisted is pretty important, so I keep it separate
@@ -52,7 +48,7 @@ from const import *
 from dmr_utils3.utils import int_id, bytes_4, try_download, mk_id_dict
 
 # Imports for the reporting server
-import pickle as pickle
+import pickle
 from reporting_const import *
 
 # The module needs logging logging, but handlers, etc. are controlled by the parent
@@ -71,22 +67,19 @@ __email__      = 'n0mjs@me.com'
 systems = {}
 
 # Timed loop used for reporting HBP status
-#
-# REPORT BASED ON THE TYPE SELECTED IN THE MAIN CONFIG FILE
 def config_reports(_config, _factory):
-    if True: #_config['REPORTS']['REPORT']:
-        def reporting_loop(_logger, _server):
-            _logger.debug('Periodic reporting loop started')
-            _server.send_config()
+    def reporting_loop(_logger, _server):
+        _logger.debug('(GLOBAL) Periodic reporting loop started')
+        _server.send_config()
 
-        logger.info('HBlink TCP reporting server configured')
+    logger.info('(GLOBAL) HBlink TCP reporting server configured')
 
-        report_server = _factory(_config)
-        report_server.clients = []
-        reactor.listenTCP(_config['REPORTS']['REPORT_PORT'], report_server)
+    report_server = _factory(_config)
+    report_server.clients = []
+    reactor.listenTCP(_config['REPORTS']['REPORT_PORT'], report_server)
 
-        reporting = task.LoopingCall(reporting_loop, logger, report_server)
-        reporting.start(_config['REPORTS']['REPORT_INTERVAL'])
+    reporting = task.LoopingCall(reporting_loop, logger, report_server)
+    reporting.start(_config['REPORTS']['REPORT_INTERVAL'])
 
     return report_server
 
@@ -94,7 +87,7 @@ def config_reports(_config, _factory):
 # Shut ourselves down gracefully by disconnecting from the masters and peers.
 def hblink_handler(_signal, _frame):
     for system in systems:
-        logger.info('SHUTDOWN: DE-REGISTER SYSTEM: %s', system)
+        logger.info('(GLOBAL) SHUTDOWN: DE-REGISTER SYSTEM: %s', system)
         systems[system].dereg()
 
 # Check a supplied ID against the ACL provided. Returns action (True|False) based
@@ -125,8 +118,10 @@ class OPENBRIDGE(DatagramProtocol):
 
     def send_system(self, _packet):
         if _packet[:4] == 'DMRD':
-            _packet = _packet[:11] + self._config['NETWORK_ID'] + _packet[15:]
-            _packet += hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()
+            #_packet = _packet[:11] + self._config['NETWORK_ID'] + _packet[15:]
+            _packet = b''.join([_packet[:11], self._config['NETWORK_ID'], _packet[15:]])
+            #_packet += hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()
+            _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
             # logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))
@@ -260,11 +255,11 @@ class HBSYSTEM(DatagramProtocol):
             self._stats['NUM_OUTSTANDING'] = 0
             self._stats['PING_OUTSTANDING'] = False
             self._stats['CONNECTION'] = 'RPTL_SENT'
-            self.send_master(RPTL + self._config['RADIO_ID'])
+            self.send_master(b''.join([RPTL, self._config['RADIO_ID']]))
             logger.info('(%s) Sending login request to master %s:%s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'])
         # If we are connected, sent a ping to the master and increment the counter
         if self._stats['CONNECTION'] == 'YES':
-            self.send_master(RPTPING + self._config['RADIO_ID'])
+            self.send_master(b''.join([RPTPING, self._config['RADIO_ID']]))
             logger.debug('(%s) RPTPING Sent to Master. Total Sent: %s, Total Missed: %s, Currently Outstanding: %s', self._system, self._stats['PINGS_SENT'], self._stats['PINGS_SENT'] - self._stats['PINGS_ACKD'], self._stats['NUM_OUTSTANDING'])
             self._stats['PINGS_SENT'] += 1
             self._stats['PING_OUTSTANDING'] = True
@@ -281,8 +276,9 @@ class HBSYSTEM(DatagramProtocol):
         #logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
 
     def send_master(self, _packet):
-        if _packet[:4] == b'DMRD':
-            _packet = _packet[:11] + self._config['RADIO_ID'] + _packet[15:]
+        #if _packet[:4] == b'DMRD':
+        #    _packet = _packet[:11] + self._config['RADIO_ID'] + _packet[15:]
+        _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:]])
         self.transport.write(_packet, self._config['MASTER_SOCKADDR'])
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         # logger.debug('(%s) TX Packet to %s:%s -- %s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'], ahex(_packet))
@@ -415,14 +411,14 @@ class HBSYSTEM(DatagramProtocol):
                     }})
                     logger.info('(%s) Repeater Logging in with Radio ID: %s, %s:%s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1])
                     _salt_str = bytes_4(self._peers[_peer_id]['SALT'])
-                    self.send_peer(_peer_id, RPTACK + _salt_str)
+                    self.send_peer(_peer_id, b''.join([RPTACK, _salt_str]))
                     self._peers[_peer_id]['CONNECTION'] = 'CHALLENGE_SENT'
                     logger.info('(%s) Sent Challenge Response to %s for login: %s', self._system, int_id(_peer_id), self._peers[_peer_id]['SALT'])
                 else:
-                    self.transport.write(MSTNAK + _peer_id, _sockaddr)
+                    self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.warning('(%s) Invalid Login from Radio ID: %s Denied by Registation ACL', self._system, int_id(_peer_id))
             else:
-                self.transport.write(MSTNAK + _peer_id, _sockaddr)
+                self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                 logger.warning('(%s) Registration denied from Radio ID: %s Maximum number of peers exceeded', self._system, int_id(_peer_id))
 
         elif _command == RPTK:    # Repeater has answered our login challenge
@@ -437,14 +433,14 @@ class HBSYSTEM(DatagramProtocol):
                 _calc_hash = bhex(sha256(_salt_str+self._config['PASSPHRASE']).hexdigest())
                 if _sent_hash == _calc_hash:
                     _this_peer['CONNECTION'] = 'WAITING_CONFIG'
-                    self.send_peer(_peer_id, RPTACK + _peer_id)
+                    self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
                     logger.info('(%s) Peer %s has completed the login exchange successfully', self._system, _this_peer['RADIO_ID'])
                 else:
                     logger.info('(%s) Peer %s has FAILED the login exchange successfully', self._system, _this_peer['RADIO_ID'])
-                    self.transport.write(MSTNAK + _peer_id, _sockaddr)
+                    self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     del self._peers[_peer_id]
             else:
-                self.transport.write(MSTNAK + _peer_id, _sockaddr)
+                self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                 logger.warning('(%s) Login challenge from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
 
         elif _command == RPTC:    # Repeater is sending it's configuraiton OR disconnecting
@@ -454,7 +450,7 @@ class HBSYSTEM(DatagramProtocol):
                             and self._peers[_peer_id]['CONNECTION'] == 'YES' \
                             and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
                     logger.info('(%s) Peer is closing down: %s (%s)', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id))
-                    self.transport.write(MSTNAK + _peer_id, _sockaddr)
+                    self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     del self._peers[_peer_id]
 
             else:
@@ -481,10 +477,10 @@ class HBSYSTEM(DatagramProtocol):
                     _this_peer['SOFTWARE_ID'] = _data[222:262]
                     _this_peer['PACKAGE_ID'] = _data[262:302]
 
-                    self.send_peer(_peer_id, RPTACK + _peer_id)
+                    self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
                     logger.info('(%s) Peer %s (%s) has sent repeater configuration', self._system, _this_peer['CALLSIGN'], _this_peer['RADIO_ID'])
                 else:
-                    self.transport.write(MSTNAK + _peer_id, _sockaddr)
+                    self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.warning('(%s) Peer info from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
 
         elif _command == RPTP:    # RPTPing -- peer is pinging us
@@ -494,10 +490,10 @@ class HBSYSTEM(DatagramProtocol):
                             and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
                     self._peers[_peer_id]['PINGS_RECEIVED'] += 1
                     self._peers[_peer_id]['LAST_PING'] = time()
-                    self.send_peer(_peer_id, MSTPONG + _peer_id)
+                    self.send_peer(_peer_id, b''.join([MSTPONG, _peer_id]))
                     logger.debug('(%s) Received and answered RPTPING from peer %s (%s)', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id))
                 else:
-                    self.transport.write(MSTNAK + _peer_id, _sockaddr)
+                    self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.warning('(%s) Ping from Radio ID that is not logged in: %s', self._system, int_id(_peer_id))
 
         else:
@@ -589,32 +585,34 @@ class HBSYSTEM(DatagramProtocol):
                 if self._stats['CONNECTION'] == 'RPTL_SENT': # If we've sent a login request...
                     _login_int32 = _data[6:10]
                     logger.info('(%s) Repeater Login ACK Received with 32bit ID: %s', self._system, int_id(_login_int32))
-                    _pass_hash = sha256(_login_int32+self._config['PASSPHRASE']).hexdigest()
+                    _pass_hash = sha256(b''.join([_login_int32, self._config['PASSPHRASE']])).hexdigest()
                     _pass_hash = bhex(_pass_hash)
-                    self.send_master(RPTK + self._config['RADIO_ID']+_pass_hash)
+                    self.send_master(b''.join([RPTK, self._config['RADIO_ID'], _pass_hash]))
                     self._stats['CONNECTION'] = 'AUTHENTICATED'
 
                 elif self._stats['CONNECTION'] == 'AUTHENTICATED': # If we've sent the login challenge...
                     _peer_id = _data[6:10]
                     if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
                         logger.info('(%s) Repeater Authentication Accepted', self._system)
-                        _config_packet =  self._config['RADIO_ID']+\
-                                          self._config['CALLSIGN']+\
-                                          self._config['RX_FREQ']+\
-                                          self._config['TX_FREQ']+\
-                                          self._config['TX_POWER']+\
-                                          self._config['COLORCODE']+\
-                                          self._config['LATITUDE']+\
-                                          self._config['LONGITUDE']+\
-                                          self._config['HEIGHT']+\
-                                          self._config['LOCATION']+\
-                                          self._config['DESCRIPTION']+\
-                                          self._config['SLOTS']+\
-                                          self._config['URL']+\
-                                          self._config['SOFTWARE_ID']+\
-                                          self._config['PACKAGE_ID']
+                        _config_packet =  b''.join([\
+                                              self._config['RADIO_ID'],\
+                                              self._config['CALLSIGN'],\
+                                              self._config['RX_FREQ'],\
+                                              self._config['TX_FREQ'],\
+                                              self._config['TX_POWER'],\
+                                              self._config['COLORCODE'],\
+                                              self._config['LATITUDE'],\
+                                              self._config['LONGITUDE'],\
+                                              self._config['HEIGHT'],\
+                                              self._config['LOCATION'],\
+                                              self._config['DESCRIPTION'],\
+                                              self._config['SLOTS'],\
+                                              self._config['URL'],\
+                                              self._config['SOFTWARE_ID'],\
+                                              self._config['PACKAGE_ID']\
+                                          ])
 
-                        self.send_master(RPTC + _config_packet)
+                        self.send_master(b''.join([RPTC, _config_packet]))
                         self._stats['CONNECTION'] = 'CONFIG-SENT'
                         logger.info('(%s) Repeater Configuration Sent', self._system)
                     else:
@@ -626,7 +624,7 @@ class HBSYSTEM(DatagramProtocol):
                     if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
                         logger.info('(%s) Repeater Configuration Accepted', self._system)
                         if self._config['OPTIONS']:
-                            self.send_master(RPTO + self._config['RADIO_ID']+self._config['OPTIONS'])
+                            self.send_master(b''.join([RPTO, self._config['RADIO_ID'], self._config['OPTIONS']]))
                             self._stats['CONNECTION'] = 'OPTIONS-SENT'
                             logger.info('(%s) Sent options: (%s)', self._system, self._config['OPTIONS'])
                         else:
@@ -674,10 +672,10 @@ class report(NetstringReceiver):
 
     def connectionMade(self):
         self._factory.clients.append(self)
-        logger.info('HBlink reporting client connected: %s', self.transport.getPeer())
+        logger.info('(REPORT) HBlink reporting client connected: %s', self.transport.getPeer())
 
     def connectionLost(self, reason):
-        logger.info('HBlink reporting client disconnected: %s', self.transport.getPeer())
+        logger.info('(REPORT) HBlink reporting client disconnected: %s', self.transport.getPeer())
         self._factory.clients.remove(self)
 
     def stringReceived(self, data):
@@ -686,10 +684,10 @@ class report(NetstringReceiver):
     def process_message(self, _message):
         opcode = _message[:1]
         if opcode == REPORT_OPCODES['CONFIG_REQ']:
-            logger.info('HBlink reporting client sent \'CONFIG_REQ\': %s', self.transport.getPeer())
+            logger.info('(REPORT) HBlink reporting client sent \'CONFIG_REQ\': %s', self.transport.getPeer())
             self.send_config()
         else:
-            logger.error('got unknown opcode')
+            logger.error('(REPORT) got unknown opcode')
 
 class reportFactory(Factory):
     def __init__(self, config):
@@ -697,10 +695,10 @@ class reportFactory(Factory):
 
     def buildProtocol(self, addr):
         if (addr.host) in self._config['REPORTS']['REPORT_CLIENTS'] or '*' in self._config['REPORTS']['REPORT_CLIENTS']:
-            logger.debug('Permitting report server connection attempt from: %s:%s', addr.host, addr.port)
+            logger.debug('(REPORT) Permitting report server connection attempt from: %s:%s', addr.host, addr.port)
             return report(self)
         else:
-            logger.error('Invalid report server connection attempt from: %s:%s', addr.host, addr.port)
+            logger.error('(REPORT) Invalid report server connection attempt from: %s:%s', addr.host, addr.port)
             return None
 
     def send_clients(self, _message):
@@ -709,7 +707,7 @@ class reportFactory(Factory):
 
     def send_config(self):
         serialized = pickle.dumps(self._config['SYSTEMS'], protocol=2) #.decode('utf-8', errors='ignore') #pickle.HIGHEST_PROTOCOL)
-        self.send_clients(REPORT_OPCODES['CONFIG_SND']+serialized)
+        self.send_clients(b''.join([REPORT_OPCODES['CONFIG_SND'], serialized]))
 
 
 # ID ALIAS CREATION
@@ -718,23 +716,23 @@ def mk_aliases(_config):
     if _config['ALIASES']['TRY_DOWNLOAD'] == True:
         # Try updating peer aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'], _config['ALIASES']['PEER_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info(result)
+        logger.info('(GLOBAL) %s', result)
         # Try updating subscriber aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'], _config['ALIASES']['SUBSCRIBER_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info(result)
+        logger.info('(GLOBAL) %s', result)
 
     # Make Dictionaries
     peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
     if peer_ids:
-        logger.info('ID ALIAS MAPPER: peer_ids dictionary is available')
+        logger.info('(GLOBAL) ID ALIAS MAPPER: peer_ids dictionary is available')
 
     subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
     if subscriber_ids:
-        logger.info('ID ALIAS MAPPER: subscriber_ids dictionary is available')
+        logger.info('(GLOBAL) ID ALIAS MAPPER: subscriber_ids dictionary is available')
 
     talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
     if talkgroup_ids:
-        logger.info('ID ALIAS MAPPER: talkgroup_ids dictionary is available')
+        logger.info('(GLOBAL) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
 
     return peer_ids, subscriber_ids, talkgroup_ids
 
@@ -771,13 +769,13 @@ if __name__ == '__main__':
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
     logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018\n\tThe Founding Members of the K0USY Group. All rights reserved.\n')
-    logger.debug('Logging system started, anything from here on gets logged')
+    logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
     # Set up the signal handler
     def sig_handler(_signal, _frame):
-        logger.info('SHUTDOWN: HBLINK IS TERMINATING WITH SIGNAL %s', str(_signal))
+        logger.info('(GLOBAL) SHUTDOWN: HBLINK IS TERMINATING WITH SIGNAL %s', str(_signal))
         hblink_handler(_signal, _frame)
-        logger.info('SHUTDOWN: ALL SYSTEM HANDLERS EXECUTED - STOPPING REACTOR')
+        logger.info('(GLOBAL) SHUTDOWN: ALL SYSTEM HANDLERS EXECUTED - STOPPING REACTOR')
         reactor.stop()
 
     # Set signal handers so that we can gracefully exit if need be
@@ -787,10 +785,14 @@ if __name__ == '__main__':
     peer_ids, subscriber_ids, talkgroup_ids = mk_aliases(CONFIG)
 
     # INITIALIZE THE REPORTING LOOP
-    report_server = config_reports(CONFIG, reportFactory)    
+    if CONFIG['REPORTS']['REPORT']:
+        report_server = config_reports(CONFIG, reportFactory)
+    else:
+        report_server = None
+        logger.info('(REPORT) TCP Socket reporting not configured')
 
     # HBlink instance creation
-    logger.info('HBlink \'HBlink.py\' -- SYSTEM STARTING...')
+    logger.info('(GLOBAL) HBlink \'HBlink.py\' -- SYSTEM STARTING...')
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
@@ -798,6 +800,6 @@ if __name__ == '__main__':
             else:
                 systems[system] = HBSYSTEM(system, CONFIG, report_server)
             reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
-            logger.debug('%s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
+            logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
 
     reactor.run()

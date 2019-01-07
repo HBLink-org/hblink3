@@ -67,7 +67,7 @@ def acl_build(_acl, _max):
     if not _acl:
         return(True, set((const.ID_MIN, _max)))
 
-    acl = set()
+    acl = [] #set()
     sections = _acl.split(':')
 
     if sections[0] == 'PERMIT':
@@ -77,20 +77,20 @@ def acl_build(_acl, _max):
 
     for entry in sections[1].split(','):
         if entry == 'ALL':
-            acl.add((const.ID_MIN, _max))
+            acl.append((const.ID_MIN, _max))
             break
 
         elif '-' in entry:
             start,end = entry.split('-')
             start,end = int(start), int(end)
             if (const.ID_MIN <= start <= _max) or (const.ID_MIN <= end <= _max):
-                acl.add((start, end))
+                acl.append((start, end))
             else:
                 sys.exit('ACL CREATION ERROR, VALUE OUT OF RANGE (} - {})IN RANGE-BASED ENTRY: {}'.format(const.ID_MIN, _max, entry))
         else:
             id = int(entry)
             if (const.ID_MIN <= id <= _max):
-                acl.add((id, id))
+                acl.append((id, id))
             else:
                  sys.exit('ACL CREATION ERROR, VALUE OUT OF RANGE ({} - {}) IN SINGLE ID ENTRY: {}'.format(const.ID_MIN, _max, entry))
 

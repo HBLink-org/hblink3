@@ -268,7 +268,9 @@ class routerOBP(OPENBRIDGE):
                                         _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(dst_lc)
 
                                         logger.info('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-
+                                        if CONFIG['REPORTS']['REPORT']:
+                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                                            
                                     # Record the time of this packet so we can later identify a stale stream
                                     _target_status[_stream_id]['LAST'] = pkt_time
                                     # Clear the TS bit -- all OpenBridge streams are effectively on TS1
@@ -288,6 +290,9 @@ class routerOBP(OPENBRIDGE):
                                     # Create a voice terminator packet (FULL LC)
                                     elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                                         dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
+                                        if CONFIG['REPORTS']['REPORT']:
+                                            call_duration = pkt_time - _target_status[_stream_id]['START']
+                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                                     # Create a Burst B-E packet (Embedded LC)
                                     elif _dtype_vseq in [1,2,3,4]:
                                         dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
@@ -368,7 +373,8 @@ class routerOBP(OPENBRIDGE):
                                     elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                                         dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
                                         if CONFIG['REPORTS']['REPORT']:
-                                           systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), 1).encode(encoding='utf-8', errors='ignore'))
+                                            call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
+                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                                     # Create a Burst B-E packet (Embedded LC)
                                     elif _dtype_vseq in [1,2,3,4]:
                                         dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
@@ -514,7 +520,9 @@ class routerHBP(HBSYSTEM):
                                             _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(dst_lc)
 
                                             logger.info('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-
+                                            if CONFIG['REPORTS']['REPORT']:
+                                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                                            
                                         # Record the time of this packet so we can later identify a stale stream
                                         _target_status[_stream_id]['LAST'] = pkt_time
                                         # Clear the TS bit -- all OpenBridge streams are effectively on TS1
@@ -534,6 +542,9 @@ class routerHBP(HBSYSTEM):
                                         # Create a voice terminator packet (FULL LC)
                                         elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                                             dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
+                                            if CONFIG['REPORTS']['REPORT']:
+                                                call_duration = pkt_time - _target_status[_stream_id]['START']
+                                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                                         # Create a Burst B-E packet (Embedded LC)
                                         elif _dtype_vseq in [1,2,3,4]:
                                             dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
@@ -610,7 +621,8 @@ class routerHBP(HBSYSTEM):
                                         elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                                             dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
                                             if CONFIG['REPORTS']['REPORT']:
-                                               systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), 1).encode(encoding='utf-8', errors='ignore'))
+                                                call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
+                                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                                         # Create a Burst B-E packet (Embedded LC)
                                         elif _dtype_vseq in [1,2,3,4]:
                                             dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]

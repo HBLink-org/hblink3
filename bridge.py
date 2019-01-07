@@ -766,7 +766,7 @@ if __name__ == '__main__':
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:
-        report_server = config_reports(CONFIG, bridgereportFactory)
+        report_server = config_reports(CONFIG, bridgeReportFactory)
     else:
         report_server = None
         logger.info('(REPORT) TCP Socket reporting not configured')

@@ -720,7 +720,7 @@ class bridgeReportFactory(reportFactory):
 
     def send_bridgeEvent(self, _data):
         if isinstance(_data, str):
-            #_data = _data.decode('utf-8', error='ignore')
+            _data = _data.decode('utf-8', error='ignore')
         self.send_clients(REPORT_OPCODES['BRDG_EVENT']+_data)
 
 

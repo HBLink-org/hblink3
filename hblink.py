@@ -117,7 +117,7 @@ class OPENBRIDGE(DatagramProtocol):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
     def send_system(self, _packet):
-        if _packet[:4] == 'DMRD':
+        if _packet[:4] == DMRD:
             #_packet = _packet[:11] + self._config['NETWORK_ID'] + _packet[15:]
             _packet = b''.join([_packet[:11], self._config['NETWORK_ID'], _packet[15:]])
             #_packet += hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()
@@ -126,7 +126,7 @@ class OPENBRIDGE(DatagramProtocol):
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
             # logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))
         else:
-            logger.error('(%s) OpenBridge system was asked to send non DMRD packet', self._system)
+            logger.error('(%s) OpenBridge system was asked to send non DMRD packet: %s', self._system, _packet)
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pass
@@ -136,7 +136,7 @@ class OPENBRIDGE(DatagramProtocol):
         # Keep This Line Commented Unless HEAVILY Debugging!
         #logger.debug('(%s) RX packet from %s -- %s', self._system, _sockaddr, ahex(_packet))
 
-        if _packet[:4] == b'DMRD':    # DMRData -- encapsulated DMR data frame
+        if _packet[:4] == DMRD:    # DMRData -- encapsulated DMR data frame
             _data = _packet[:53]
             _hash = _packet[53:]
             _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
@@ -270,14 +270,14 @@ class HBSYSTEM(DatagramProtocol):
             #logger.debug('(%s) Packet sent to peer %s', self._system, self._peers[_peer]['RADIO_ID'])
 
     def send_peer(self, _peer, _packet):
-        if _packet[:4] == 'DMRD':
+        if _packet[:4] == DMRD:
             _packet = b''.join([_packet[:11], _peer, _packet[15:]])
         self.transport.write(_packet, self._peers[_peer]['SOCKADDR'])
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         #logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
 
     def send_master(self, _packet):
-        if _packet[:4] == b'DMRD':
+        if _packet[:4] == DMRD:
             _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:]])
         self.transport.write(_packet, self._config['MASTER_SOCKADDR'])
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
@@ -303,7 +303,7 @@ class HBSYSTEM(DatagramProtocol):
         # Extract the command, which is various length, all but one 4 significant characters -- RPTCL
         _command = _data[:4]
 
-        if _command == b'DMRD':    # DMRData -- encapsulated DMR data frame
+        if _command == DMRD:    # DMRData -- encapsulated DMR data frame
             _peer_id = _data[11:15]
             if _peer_id in self._peers \
                         and self._peers[_peer_id]['CONNECTION'] == 'YES' \
@@ -508,8 +508,8 @@ class HBSYSTEM(DatagramProtocol):
         if self._config['MASTER_SOCKADDR'] == _sockaddr:
             # Extract the command, which is various length, but only 4 significant characters
             _command = _data[:4]
-            if   _command == b'DMRD':    # DMRData -- encapsulated DMR data frame
-                
+            if   _command == DMRD:    # DMRData -- encapsulated DMR data frame
+
                 _peer_id = _data[11:15]
                 if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
                     _seq = _data[4:5]
@@ -528,7 +528,7 @@ class HBSYSTEM(DatagramProtocol):
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
                     _stream_id = _data[16:20]
                     #logger.debug('(%s) DMRD - Sequence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
-                    
+
                     # ACL Processing
                     if self._CONFIG['GLOBAL']['USE_ACL']:
                         if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
@@ -746,7 +746,6 @@ if __name__ == '__main__':
     import sys
     import os
     import signal
-
 
     # Change the current directory to the location of the application
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))

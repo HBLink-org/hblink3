@@ -270,7 +270,7 @@ class routerOBP(OPENBRIDGE):
                                         logger.info('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                         if CONFIG['REPORTS']['REPORT']:
                                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
-                                            
+
                                     # Record the time of this packet so we can later identify a stale stream
                                     _target_status[_stream_id]['LAST'] = pkt_time
                                     # Clear the TS bit -- all OpenBridge streams are effectively on TS1
@@ -390,7 +390,7 @@ class routerOBP(OPENBRIDGE):
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
                 call_duration = pkt_time - self.STATUS[_stream_id]['START']
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
+                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
@@ -411,53 +411,53 @@ class routerHBP(HBSYSTEM):
             1: {
                 'RX_START':     time(),
                 'TX_START':     time(),
-                'RX_SEQ':       '\x00',
-                'RX_RFS':       '\x00',
-                'TX_RFS':       '\x00',
-                'RX_PEER':      '\x00',
-                'TX_PEER':      '\x00',
-                'RX_STREAM_ID': '\x00',
-                'TX_STREAM_ID': '\x00',
-                'RX_TGID':      '\x00\x00\x00',
-                'TX_TGID':      '\x00\x00\x00',
+                'RX_SEQ':       b'\x00',
+                'RX_RFS':       b'\x00',
+                'TX_RFS':       b'\x00',
+                'RX_PEER':      b'\x00',
+                'TX_PEER':      b'\x00',
+                'RX_STREAM_ID': b'\x00',
+                'TX_STREAM_ID': b'\x00',
+                'RX_TGID':      b'\x00\x00\x00',
+                'TX_TGID':      b'\x00\x00\x00',
                 'RX_TIME':      time(),
                 'TX_TIME':      time(),
                 'RX_TYPE':      HBPF_SLT_VTERM,
                 'TX_TYPE':      HBPF_SLT_VTERM,
-                'RX_LC':        '\x00',
-                'TX_H_LC':      '\x00',
-                'TX_T_LC':      '\x00',
+                'RX_LC':        b'\x00',
+                'TX_H_LC':      b'\x00',
+                'TX_T_LC':      b'\x00',
                 'TX_EMB_LC': {
-                    1: '\x00',
-                    2: '\x00',
-                    3: '\x00',
-                    4: '\x00',
+                    1: b'\x00',
+                    2: b'\x00',
+                    3: b'\x00',
+                    4: b'\x00',
                     }
                 },
             2: {
                 'RX_START':     time(),
                 'TX_START':     time(),
-                'RX_SEQ':       '\x00',
-                'RX_RFS':       '\x00',
-                'TX_RFS':       '\x00',
-                'RX_PEER':      '\x00',
-                'TX_PEER':      '\x00',
-                'RX_STREAM_ID': '\x00',
-                'TX_STREAM_ID': '\x00',
-                'RX_TGID':      '\x00\x00\x00',
-                'TX_TGID':      '\x00\x00\x00',
+                'RX_SEQ':       b'\x00',
+                'RX_RFS':       b'\x00',
+                'TX_RFS':       b'\x00',
+                'RX_PEER':      b'\x00',
+                'TX_PEER':      b'\x00',
+                'RX_STREAM_ID': b'\x00',
+                'TX_STREAM_ID': b'\x00',
+                'RX_TGID':      b'\x00\x00\x00',
+                'TX_TGID':      b'\x00\x00\x00',
                 'RX_TIME':      time(),
                 'TX_TIME':      time(),
                 'RX_TYPE':      HBPF_SLT_VTERM,
                 'TX_TYPE':      HBPF_SLT_VTERM,
-                'RX_LC':        '\x00',
-                'TX_H_LC':      '\x00',
-                'TX_T_LC':      '\x00',
+                'RX_LC':        b'\x00',
+                'TX_H_LC':      b'\x00',
+                'TX_T_LC':      b'\x00',
                 'TX_EMB_LC': {
-                    1: '\x00',
-                    2: '\x00',
-                    3: '\x00',
-                    4: '\x00',
+                    1: b'\x00',
+                    2: b'\x00',
+                    3: b'\x00',
+                    4: b'\x00',
                     }
                 }
             }
@@ -638,7 +638,7 @@ class routerHBP(HBSYSTEM):
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
                 call_duration = pkt_time - self.STATUS[_slot]['RX_START']
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
+                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))

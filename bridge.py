@@ -105,7 +105,7 @@ def make_bridges(_rules):
     for _bridge in bridge_file.BRIDGES:
         for _system in bridge_file.BRIDGES[_bridge]:
             if _system['SYSTEM'] not in CONFIG['SYSTEMS']:
-                sys.exit('ERROR: Conference bridges found for system not configured main configuration')
+                sys.exit('ERROR: Conference bridge "{}" references a system named "{}" that is not enabled in the main configuration'.format(_bridge, _system['SYSTEM']))
 
             _system['TGID']       = bytes_3(_system['TGID'])
             for i, e in enumerate(_system['ON']):

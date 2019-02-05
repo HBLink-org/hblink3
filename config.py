@@ -138,6 +138,8 @@ def build_config(_config_file):
                     'LOG_LEVEL': config.get(section, 'LOG_LEVEL'),
                     'LOG_NAME': config.get(section, 'LOG_NAME')
                 })
+                if not CONFIG['LOGGER']['LOG_FILE']:
+                    CONFIG['LOGGER']['LOG_FILE'] = '/dev/null'
 
             elif section == 'ALIASES':
                 CONFIG['ALIASES'].update({

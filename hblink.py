@@ -19,7 +19,7 @@
 ###############################################################################
 
 '''
-This program does very little on it's own. It is intended to be used as a module
+This program does very little on its own. It is intended to be used as a module
 to build applications on top of the HomeBrew Repeater Protocol. By itself, it
 will only act as a peer or master for the systems specified in its configuration
 file (usually hblink.cfg). It is ALWAYS best practice to ensure that this program

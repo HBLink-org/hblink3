@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 ###############################################################################
-#   Copyright (C) 2016-2018 Cortney T. Buffington, N0MJS <n0mjs@me.com>
+#   Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -17,18 +17,6 @@
 #   along with this program; if not, write to the Free Software Foundation,
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
-
-'''
-This application, in conjuction with it's rule file (rules.py) will
-work like a "conference bridge". This is similar to what most hams think of as a
-reflector. You define conference bridges and any system joined to that conference
-bridge will both receive traffic from, and send traffic to any other system
-joined to the same conference bridge. It does not provide end-to-end connectivity
-as each end system must individually be joined to a conference bridge (a name
-you create in the configuraiton file) to pass traffic.
-
-This program currently only works with group voice calls.
-'''
 
 # Python modules we need
 import sys

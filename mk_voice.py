@@ -77,6 +77,7 @@ def pkt_gen(_rf_src, _dst_id, _peer, _slot, _phrase):
     # Send each burst, six bursts per Superframe rotating through with the proper EMBED value per burst A-F
     for word in _phrase:
         for burst in range(0, len(word)):
+            print(burst)
             pkt = b'DMRD' + bytes([SEQ]) + SDP + bytes([_slot << 7 | BURSTBITS[burst % 6]]) + STREAM_ID + (word[burst + 0][0] + EMBED[burst % 6] + word[burst + 0][1]).tobytes() + TAIL
             SEQ = (SEQ + 1) % 0x100
             yield pkt

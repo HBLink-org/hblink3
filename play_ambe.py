@@ -23,6 +23,7 @@ import sys
 from bitarray import bitarray
 from time import time, sleep
 from importlib import import_module
+from binascii import b2a_hex as bhex
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -79,7 +80,7 @@ class HBP(HBSYSTEM):
             print(int_id(_stream_id), int_id(self.last_stream))
             self.last_stream = _stream_id
             print('start speech')
-            speech = pkt_gen(bytes_3(312123), bytes_3(2), bytes_4(312123), 0, [words['all_circuits'], words['enabled'], words['3'], words['1'], words['2'], words['0']])
+            speech = pkt_gen(bytes_3(3120101), bytes_3(2), bytes_4(3120119), 0, [words['all_circuits'],words['all_circuits']])
     
             sleep(1)
             while True:
@@ -89,6 +90,7 @@ class HBP(HBSYSTEM):
                     break
                 sleep(.058)
                 self.send_system(pkt)
+                print(bhex(pkt))
             print('end speech')
 
 

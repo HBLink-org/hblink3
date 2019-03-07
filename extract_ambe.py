@@ -19,27 +19,29 @@
 ###############################################################################
 
 '''
-This is a short program that is intended to be used only to validate voice entries
-in the voice_lib.py file. It should only be used for building voice libraries and
-only used during development to validate the entires.
+This module is used to extract the AMBE72, FEC encoded data needed to make DMR
+frames. It prints out a list of lists, the outer list contains the word and each
+of the inner lists has two elements that comprise the 3 AMBE frames sent in each
+DMR packet. The frames are split into 1.5 frames and 1.5 frames, that is to say
+the two 108 bit segments used in DMR bursts.
 
-It uses a number of hard-coded parameters, like the voice files to play back, the
-slot, talkgroup, source, etc. of the originating stream.
+This program is intended to produce the data needed to build words (or phrases)
+that can be used to populate the voice_lib.py file. It does not write the file
+for you, you must copy the output and paste them into the file. Most of the
+formatting, but not all, is done for you.
 
-It is not for novices to use, and should only be used by those comfortable with
-how DMR packets are build and Python. It does not handle OpenBridge systems, only
-HBP systems, and it is HIGHLY recommended to only use it against a single system 
-at a time.
+It will not process OpenBridge systems, and it is strongly recommended you only
+use it with one system in the hblink.cfg file at a time -- otherwise things can
+get really out of hand quickly.
 
-It is a development and debugging tool and has no purpose in actual production
-DMR networking systems.
+This is a program for ADVANCED USERS ONLY. I really mean it this time, if you're
+not comfortable with how DMR packets are structured and basic Python, this isn't
+going to work well for you.
 '''
 
 
 # Python modules we need
-from time import sleep
-from binascii import b2a_hex as bhex
-from threading import Thread
+from bitarray import bitarray
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -47,15 +49,10 @@ from twisted.internet import reactor
 
 # Things we import from the main hblink module
 from hblink import HBSYSTEM, systems, hblink_handler
-from dmr_utils3.utils import bytes_3, bytes_4, int_id
+from dmr_utils3.utils import int_id
 import config
 import log
-from const import *
-from mk_voice import pkt_gen
-from voice_lib import words
 
-
-# REMOVE LATER from datetime import datetime
 # The module needs logging, but handlers, etc. are controlled by the parent
 import logging
 logger = logging.getLogger(__name__)
@@ -70,42 +67,63 @@ __maintainer__ = 'Cort Buffington, N0MJS'
 __email__      = 'n0mjs@me.com'
 
 # Module gobal varaibles
+# Precalculated "dmrbits" (DMRD packet byte 15) -- just (slot << 7 | this value) and you're good to go!
+HEADBITS  = 0b00100001
+BURSTBITS = [0b00010000,0b00000001,0b00000010,0b00000011,0b00000100,0b00000101]
+TERMBITS  = 0b00100010
+
 
 class HBP(HBSYSTEM):
 
     def __init__(self, _name, _config, _report):
         HBSYSTEM.__init__(self, _name, _config, _report)
-        self.last_stream = b'\x00'
-        self.threads = []
-
-    def play_voice(self):
-        print('start speech')
-        speech = pkt_gen(bytes_3(3120101), bytes_3(2), bytes_4(3120119), 0, [words['n0mjs']])
-
-        sleep(1)
-        while True:
-            try:
-                pkt = next(speech)
-            except StopIteration:
-                break
-            sleep(.058)
-            self.send_system(pkt)
-            print(bhex(pkt))
-        print('end speech')
+        self.current_stream = '\x00'
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
-        if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (_stream_id != self.last_stream):
-            print(int_id(_stream_id), int_id(self.last_stream))
-            self.last_stream = _stream_id
-            t = Thread(target=self.play_voice)
-            self.threads.append(t)
-            t.start()
-            #self.play_voice()
+        
+        dmr = _data[20:53]
+        bits = _data[15] & ~(1<<7)
+        
+        dmrraw = bitarray(endian='big')
+        dmrraw.frombytes(dmr)
+        
+        if bits == HEADBITS:
+            if self.current_stream != _stream_id:
+                print('START STREAM ID {} ON SLOT {} FROM SUBSCRIBER {} TO GROUP {}'.format(int_id(_stream_id), _slot, int_id(_rf_src), int_id(_dst_id)))
+                print('[')
+                self.current_stream = _stream_id
             
+        if bits == TERMBITS:
+            if self.current_stream == _stream_id:
+                print('    ]')
+                print('STOP STREAM ID {}'.format(int_id(_stream_id)))
+                self.current_stream = '\x00'
+        
+        if bits == BURSTBITS[0]:
+            bts = 'Burst A'
+            sig = [dmrraw[:108], dmrraw[-108:]]
+            print('        {},'.format(sig))
+        if bits == BURSTBITS[1]:
+            bts = 'Burst B'
+            sig = [dmrraw[:108], dmrraw[-108:]]
+            print('        {},'.format(sig))
+        if bits == BURSTBITS[2]:
+            bts = 'Burst C'
+            sig = [dmrraw[:108], dmrraw[-108:]]
+            print('        {},'.format(sig))
+        if bits == BURSTBITS[3]:
+            bts = 'Burst D'
+            sig = [dmrraw[:108], dmrraw[-108:]]
+            print('        {},'.format(sig))
+        if bits == BURSTBITS[4]:
+            bts = 'Burst E'
+            sig = [dmrraw[:108], dmrraw[-108:]]
+            print('        {},'.format(sig))
+        if bits == BURSTBITS[5]:
+            bts = 'Burst F'
+            sig = [dmrraw[:108], dmrraw[-108:]]
+            print('        {}'.format(sig))
             
-
-
-
 #************************************************
 #      MAIN PROGRAM LOOP STARTS HERE
 #************************************************

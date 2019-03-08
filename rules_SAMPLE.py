@@ -45,6 +45,20 @@ BRIDGES = {
         ]
 }
 
+TELEMETRY = {
+    'WORLDWIDE': [
+        {'SYSTEM': 'MASTER-1',   'ON': [], 'OFF': []}
+    ],
+    'ENGLISH': [
+        {'SYSTEM': 'MASTER-1',   'ON': [], 'OFF': []},
+        {'SYSTEM': 'REPEATER-1', 'ON': [], 'OFF': []}
+    ],
+    'STATEWIDE': [
+        {'SYSTEM': 'MASTER-1',   'ON': [], 'OFF': []},
+        {'SYSTEM': 'REPEATER-1', 'ON': [], 'OFF': []}
+    ]
+}
+
 if __name__ == '__main__':
     from pprint import pprint
     pprint(BRIDGES)

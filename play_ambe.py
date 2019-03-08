@@ -76,11 +76,9 @@ class HBP(HBSYSTEM):
     def __init__(self, _name, _config, _report):
         HBSYSTEM.__init__(self, _name, _config, _report)
         self.last_stream = b'\x00'
-        self.threads = []
 
-    def play_voice(self):
-        print('start speech')
-        speech = pkt_gen(bytes_3(3120101), bytes_3(2), bytes_4(3120119), 0, [words['n0mjs']])
+    def play_voice(self, _rf_src, _tgid, _peer, _slot, _speech):
+        speech = pkt_gen(_rf_src, _tgid, _peer, _slot, _speech)
 
         sleep(1)
         while True:
@@ -90,17 +88,15 @@ class HBP(HBSYSTEM):
                 break
             sleep(.058)
             self.send_system(pkt)
-            print(bhex(pkt))
-        print('end speech')
+        return None
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (_stream_id != self.last_stream):
             print(int_id(_stream_id), int_id(self.last_stream))
             self.last_stream = _stream_id
-            t = Thread(target=self.play_voice)
-            self.threads.append(t)
-            t.start()
-            #self.play_voice()
+            
+            feedback = Thread(target=self.play_voice(bytes_3(3120101), bytes_3(2), bytes_4(3120119), 0, [words['n0mjs']]))
+            feedback.start()
             
             
 

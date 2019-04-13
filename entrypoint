@@ -1,0 +1,10 @@
+#!/bin/sh
+
+mkdir -p /var/tmp/config 
+cd /var/tmp/config
+git clone https://${GIT_USER}:${GIT_PASSWORD}@${GIT_REPO}
+
+DIR=$(echo ${GIT_REPO}| sed s/.git$//g | sed s#^.*/##g)
+
+cp -a /var/tmp/config/${DIR}/*cfg /opt/hblink3/
+python /opt/hblink3/hblink.py

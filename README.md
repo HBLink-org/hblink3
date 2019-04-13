@@ -26,9 +26,9 @@ This document assumes the reader is familiar with Linux/UNIX, the Python program
 
 **Using docker version**
 
-To use with provided docker configuration you will need:
-* A private repository with your configuration files (all .cfg files in repo will be copyed to the application root directory on start)
-* A service user able to read your private repository
+To work with provided docker setup you will need:
+* A private repository with your configuration files (all .cfg files in repo will be copyed to the application root directory on start up)
+* A service user able to read your private repository (or be brave and publish your configuration, or be really brave and give your username and password to the docker)
 * A server with docker installed
 * Follow this simple steps:
 

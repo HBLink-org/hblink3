@@ -48,6 +48,7 @@ from dmr_utils3 import decode, bptc, const
 import config
 import log
 from const import *
+from voice_lib import words
 
 # Stuff for socket reporting
 import pickle
@@ -96,9 +97,9 @@ def config_reports(_config, _factory):
 def make_bridges(_rules):
     try:
         bridge_file = import_module(_rules)
-        logger.info('(ROUTER) Routing bridges file found and bridges imported')
+        logger.info('(ROUTER) Routing rules file found and bridges imported')
     except ImportError:
-        sys.exit('(ROUTER) TERMINATING: Routing bridges file not found or invalid')
+        sys.exit('(ROUTER) TERMINATING: Routing rules file not found or invalid')
 
     # Convert integer GROUP ID numbers from the config into hex strings
     # we need to send in the actual data packets.
@@ -118,6 +119,15 @@ def make_bridges(_rules):
             else:
                 _system['TIMER']  = time()
     return bridge_file.BRIDGES
+    
+def make_telemetry(_rules):
+    try:
+        bridge_file = import_module(_rules)
+        logger.info('(ROUTER) Routing rules file found and telemetry imported')
+    except ImportError:
+        sys.exit('(ROUTER) TERMINATING: Routing rules file not found or invalid')
+    return bridge_file.TELEMETRY
+
 
 
 # Run this every minute for rule timer updates
@@ -462,6 +472,19 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
+    def play_voice(self, _rf_src, _tgid, _peer, _slot, _speech):
+        speech = pkt_gen(_rf_src, _tgid, _peer, _slot, _speech)
+
+        sleep(1)
+        while True:
+            try:
+                pkt = next(speech)
+            except StopIteration:
+                break
+            sleep(.058)
+            self.send_system(pkt)
+        return None
+        
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
@@ -774,7 +797,9 @@ if __name__ == '__main__':
 
     # Build the routing rules file
     BRIDGES = make_bridges('rules')
-
+    # Build the telemetry table
+    TELEMETRY = make_telemetry('rules')
+    
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:
         report_server = config_reports(CONFIG, bridgeReportFactory)

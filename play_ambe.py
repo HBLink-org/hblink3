@@ -95,7 +95,7 @@ class HBP(HBSYSTEM):
             print(int_id(_stream_id), int_id(self.last_stream))
             self.last_stream = _stream_id
             
-            feedback = Thread(target=self.play_voice(bytes_3(3120101), bytes_3(2), bytes_4(3120119), 0, [words['n0mjs']]))
+            feedback = Thread(target=self.play_voice(bytes_3(3120101), bytes_3(2), bytes_4(3120119), 0, [words['kansas_link'],words['connected']]))
             feedback.start()
             
             

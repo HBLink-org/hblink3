@@ -122,7 +122,7 @@ class HBP(HBSYSTEM):
         if bits == BURSTBITS[5]:
             bts = 'Burst F'
             sig = [dmrraw[:108], dmrraw[-108:]]
-            print('        {}'.format(sig))
+            print('        {},'.format(sig))
             
 #************************************************
 #      MAIN PROGRAM LOOP STARTS HERE

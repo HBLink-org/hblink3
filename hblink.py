@@ -33,7 +33,7 @@ from binascii import a2b_hex as bhex
 from random import randint
 from hashlib import sha256, sha1
 from hmac import new as hmac_new, compare_digest
-from time import time
+from time import time, sleep
 from collections import deque
 
 # Twisted is pretty important, so I keep it separate
@@ -294,7 +294,9 @@ class HBSYSTEM(DatagramProtocol):
         radio3 = int.from_bytes(radio, 'big').to_bytes(3, 'big')
         radio4 = int.from_bytes(radio, 'big').to_bytes(4, 'big')
         xlx3   = xlx.to_bytes(3, 'big')
-        streamid = bytearray.fromhex('6df88f36')
+        streamid = randint(0,255).to_bytes(1, 'big')+randint(0,255).to_bytes(1, 'big')+randint(0,255).to_bytes(1, 'big')+randint(0,255).to_bytes(1, 'big')
+        # Wait for .5 secs for the XLX to log us in
+        sleep(.500)
         for packetnr in range(5):
             if packetnr < 3:
                 # First 3 packets, voice start, stream type e1
@@ -307,9 +309,10 @@ class HBSYSTEM(DatagramProtocol):
             packetnr1 = packetnr.to_bytes(1, 'big')
             strmtype1 = strmtype.to_bytes(1, 'big')
             _packet = b''.join([DMRD, packetnr1, radio3, xlx3, radio4, strmtype1, streamid, payload])
+            sleep(.100)
             self.transport.write(_packet, mastersock)
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-            #logger.info('(%s) XLX Module Change Packet: %s', self._system, ahex(_packet))
+            #logger.debug('(%s) XLX Module Change Packet: %s', self._system, ahex(_packet))
         return
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):

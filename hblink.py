@@ -224,6 +224,13 @@ class HBSYSTEM(DatagramProtocol):
             self.datagramReceived = self.peer_datagramReceived
             self.dereg = self.peer_dereg
 
+        elif self._config['MODE'] == 'XLXPEER':
+            self._stats = self._config['XLXSTATS']
+            self.send_system = self.send_master
+            self.maintenance_loop = self.peer_maintenance_loop
+            self.datagramReceived = self.peer_datagramReceived
+            self.dereg = self.peer_dereg
+
     def startProtocol(self):
         # Set up periodic loop for tracking pings from peers. Run every 'PING_TIME' seconds
         self._system_maintenance = task.LoopingCall(self.maintenance_loop)

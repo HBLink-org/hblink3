@@ -290,6 +290,28 @@ class HBSYSTEM(DatagramProtocol):
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         # logger.debug('(%s) TX Packet to %s:%s -- %s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'], ahex(_packet))
 
+    def send_xlxmaster(self, radio, xlx, mastersock):
+        radio3 = int.from_bytes(radio, 'big').to_bytes(3, 'big')
+        radio4 = int.from_bytes(radio, 'big').to_bytes(4, 'big')
+        xlx3   = xlx.to_bytes(3, 'big')
+        streamid = bytearray.fromhex('6df88f36')
+        for packetnr in range(5):
+            if packetnr < 3:
+                # First 3 packets, voice start, stream type e1
+                strmtype = 225
+                payload = bytearray.fromhex('4f2e00b501ae3a001c40a0c1cc7dff57d75df5d5065026f82880bd616f13f185890000')
+            else:
+                # Last 2 packets, voice end, stream type e2
+                strmtype = 226
+                payload = bytearray.fromhex('4f410061011e3a781c30a061ccbdff57d75df5d2534425c02fe0b1216713e885ba0000')
+            packetnr1 = packetnr.to_bytes(1, 'big')
+            strmtype1 = strmtype.to_bytes(1, 'big')
+            _packet = b''.join([DMRD, packetnr1, radio3, xlx3, radio4, strmtype1, streamid, payload])
+            self.transport.write(_packet, mastersock)
+            # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
+            #logger.info('(%s) XLX Module Change Packet: %s', self._system, ahex(_packet))
+        return
+
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pass
 
@@ -638,6 +660,10 @@ class HBSYSTEM(DatagramProtocol):
                             self._stats['CONNECTION'] = 'YES'
                             self._stats['CONNECTED'] = time()
                             logger.info('(%s) Connection to Master Completed', self._system)
+                            # If we are an XLX, send the XLX module request here.
+                            if self._config['MODE'] == 'XLXPEER':
+                                self.send_xlxmaster(self._config['RADIO_ID'], self._config['XLXMODULE'], self._config['MASTER_SOCKADDR'])
+                                logger.info('(%s) Sending XLX Module request', self._system)
                     else:
                         self._stats['CONNECTION'] = 'NO'
                         logger.error('(%s) Master ACK Contained wrong ID - Connection Reset', self._system)

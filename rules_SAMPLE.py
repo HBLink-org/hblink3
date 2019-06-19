@@ -15,7 +15,9 @@ configuration file.
     * SYSTEM - The name of the sytem as listed in the main hblink configuration file (e.g. hblink.cfg)
         This MUST be the exact same name as in the main config file!!!
     * TS - Timeslot used for matching traffic to this confernce bridge
+        XLX connections should *ALWAYS* use TS 2 only.
     * TGID - Talkgroup ID used for matching traffic to this conference bridge
+        XLX connections should *ALWAYS* use TG 9 only.
     * ON and OFF are LISTS of Talkgroup IDs used to trigger this system off and on. Even if you
         only want one (as shown in the ON example), it has to be in list format. None can be
         handled with an empty list, such as " 'ON': [] ".

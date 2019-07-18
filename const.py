@@ -52,7 +52,7 @@ HBPF_SLT_VTERM  = 0x2
 # HomeBrew Protocol Commands
 DMRD    = b'DMRD'
 MSTCL   = b'MSTCL'
-MSTNAK  = b'MSTNAC'
+MSTNAK  = b'MSTNAK'
 MSTPONG = b'MSTPONG'
 MSTN    = b'MSTN'
 MSTP    = b'MSTP'

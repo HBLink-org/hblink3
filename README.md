@@ -11,7 +11,7 @@ DVSwitch@groups.io
 
 **UPDATES:**
 
-**PURPOSE:** Thanks to the work of Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT we have an open protocol for internetworking DMR repeaters. Unfortunately, there's no generic client and/or master stacks. This project is to build an open-source, python-based implementation. This is a non-commercial license. Atribution is *required* if you use it.
+**PURPOSE:** Thanks to the work of Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT we have an open protocol for internetworking DMR repeaters. Unfortunately, there's no generic client and/or master stacks. This project is to build an open-source, python-based implementation. You are free to use this software however you want, however we ask that you provide attribution in some public venue (such as project, club, organization web site). This helps us see where the software is in use and track how it is used.
 
 For those who will ask: This is a piece of software that implements an open-source, amateur radio networking protocol. It is not a network. It is not indended to be a network. It is not intended to replace or circumvent a network. People do those things, code doesn't.
   

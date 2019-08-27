@@ -95,24 +95,8 @@ class HBP(HBSYSTEM):
             print(int_id(_stream_id), int_id(self.last_stream))
             self.last_stream = _stream_id
             
-            #feedback = Thread(target=self.play_voice(bytes_3(3120101), bytes_3(2), bytes_4(3120119), 0, [words['connected']]))
-            #feedback.start()
-            
-            speech = pkt_gen(bytes_3(3120101), bytes_3(2), bytes_4(3120119), 0, [words['connected']])
-
-            sleep(4)
-            while True:
-                try:
-                    pkt = next(speech)
-                except StopIteration:
-                    break
-                sleep(.058)
-                dec = bhex(pkt)
-                print('TYPE:{} SEQ:{} SRC:{} DST:{} PEER:{} DMRBITS:{} STRID:{} PD1:{} EMB:{} PD2:{} TL:{}'.format(pkt[:4], pkt[4], int_id(pkt[5:8]), int_id(pkt[8:11]), int_id(pkt[11:15]), hex(pkt[15]), int_id(pkt[16:20]), bhex(pkt[20:34]), bhex(pkt[34:38]), bhex(pkt[38:-2]), bhex(pkt[-2:])))
-                self.send_system(pkt)
-            
-            
-
+            feedback = Thread(target=self.play_voice(bytes_3(3120102), bytes_3(2), bytes_4(3120119), 0, [words, ['kansas_link'], words['connected']]))
+            feedback.start()
 
 
 #************************************************

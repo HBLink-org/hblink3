@@ -11,7 +11,7 @@ DVSwitch@groups.io
 
 **UPDATES:**
 
-**PURPOSE:** Thanks to the work of Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT we have an open protocol for internetworking DMR repeaters. Unfortunately, there's no generic client and/or master stacks. This project is to build an open-source, python-based implementation. This is a non-commercial license. Atribution is *required* if you use it.
+**PURPOSE:** Thanks to the work of Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT we have an open protocol for internetworking DMR repeaters. Unfortunately, there's no generic client and/or master stacks. This project is to build an open-source, python-based implementation. You are free to use this software however you want, however we ask that you provide attribution in some public venue (such as project, club, organization web site). This helps us see where the software is in use and track how it is used.
 
 For those who will ask: This is a piece of software that implements an open-source, amateur radio networking protocol. It is not a network. It is not indended to be a network. It is not intended to replace or circumvent a network. People do those things, code doesn't.
   
@@ -24,11 +24,37 @@ None. The owners of this work make absolutely no warranty, express or implied. U
 **PRE-REQUISITE KNOWLEDGE:**  
 This document assumes the reader is familiar with Linux/UNIX, the Python programming language and DMR.  
 
+**Using docker version**
+
+To work with provided docker setup you will need:
+* A private repository with your configuration files (all .cfg files in repo will be copyed to the application root directory on start up)
+* A service user able to read your private repository (or be brave and publish your configuration, or be really brave and give your username and password to the docker)
+* A server with docker installed
+* Follow this simple steps:
+
+Build your own image from source
+
+```bash
+
+docker build . -t millaguie/hblink:3.0.0
+
+```
+
+Or user a prebuilt one in docker hub: millaguie/hblink:3.0.0
+
+Wake up your container
+
+```bash
+touch /var/log/hblink.log
+chown 65000  /var/log/hblink.log
+ run -v /var/log/hblink.log:/var/log/hblink.log -e GIT_USER=$USER -e GIT_PASSWORD=$PASSWORD -e GIT_REPO=$URL_TO_REPO_WITHOUT_HTTPS://  -p 54000:54000  millaguie/hblink:3.0.0
+ ```
+
 **MORE DOCUMENTATION TO COME**
 
 ***0x49 DE N0MJS***
 
-Copyright (C) 2016-2017 Cortney T. Buffington, N0MJS n0mjs@me.com
+Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS n0mjs@me.com
 
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
 

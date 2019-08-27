@@ -63,6 +63,7 @@ def pkt_gen(_rf_src, _dst_id, _peer, _slot, _phrase):
     EMBED.append(EMB['BURST_F'][:8] + NULL_EMB_LC + EMB['BURST_F'][-8:])
     
     
+    
     #initialize the HBP calls stream sequence to 0
     SEQ = 0
 
@@ -77,7 +78,7 @@ def pkt_gen(_rf_src, _dst_id, _peer, _slot, _phrase):
     # Send each burst, six bursts per Superframe rotating through with the proper EMBED value per burst A-F
     for word in _phrase:
         for burst in range(0, len(word)):
-            pkt = b'DMRD' + bytes([SEQ]) + SDP + bytes([_slot << 7 | BURSTBITS[burst % 6]]) + STREAM_ID + (word[burst + 0][0] + EMBED[burst % 6] + word[burst + 0][1]).tobytes() + TAIL
+            pkt = b'DMRD' + bytes([SEQ]) + SDP + bytes([_slot << 7 | BURSTBITS[burst % 6]]) + STREAM_ID + (word[burst][0] + EMBED[burst % 6] + word[burst][1]).tobytes() + TAIL
             SEQ = (SEQ + 1) % 0x100
             yield pkt
 
@@ -93,7 +94,7 @@ def pkt_gen(_rf_src, _dst_id, _peer, _slot, _phrase):
 if __name__ == '__main__':
     from time import time
     
-    speech = pkt_gen(bytes_3(3120101), bytes_3(3120), bytes_4(312000), 0, [words['n0mjs']])
+    speech = pkt_gen(bytes_3(3120101), bytes_3(3120), bytes_4(312000), 0, [words['connected']])
     
 
     while True:

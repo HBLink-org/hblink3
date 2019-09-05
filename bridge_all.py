@@ -43,7 +43,7 @@ from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
 
 # Things we import from the main hblink module
-from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, config_reports, mk_aliases
+from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, config_reports, mk_aliases, acl_check
 from dmr_utils3.utils import bytes_3, int_id, get_alias
 from dmr_utils3 import decode, bptc, const
 import config
@@ -160,33 +160,33 @@ class bridgeallSYSTEM(HBSYSTEM):
                         if self._CONFIG['GLOBAL']['USE_ACL']:
                             if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
                                 if self._laststrid != _stream_id:
-                                    logger.debug('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', _target_system, int_id(_stream_id), int_id(_rf_src))
+                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', _target_system, int_id(_stream_id), int_id(_rf_src))
                                     self._laststrid = _stream_id
                                 return
                             if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
                                 if self._laststrid != _stream_id:
-                                    logger.debug('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', _target_system, int_id(_stream_id), int_id(_dst_id))
+                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', _target_system, int_id(_stream_id), int_id(_dst_id))
                                     self._laststrid = _stream_id
                                 return
                             if _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
                                 if self._laststrid != _stream_id:
-                                    logger.debug('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', _target_system, int_id(_stream_id), int_id(_dst_id))
+                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', _target_system, int_id(_stream_id), int_id(_dst_id))
                                     self._laststrid = _stream_id
                                 return
-                        if self._target_system['USE_ACL']:
+                        if _target_system['USE_ACL']:
                             if not acl_check(_rf_src, _target_system['SUB_ACL']):
                                 if self._laststrid != _stream_id:
-                                    logger.debug('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', _target_system, int_id(_stream_id), int_id(_rf_src))
+                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', _target_system, int_id(_stream_id), int_id(_rf_src))
                                     self._laststrid = _stream_id
                                 return
                             if _slot == 1 and not acl_check(_dst_id, _target_system['TG1_ACL']):
                                 if self._laststrid != _stream_id:
-                                    logger.debug('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', _target_system, int_id(_stream_id), int_id(_dst_id))
+                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', _target_system, int_id(_stream_id), int_id(_dst_id))
                                     self._laststrid = _stream_id
                                 return
                             if _slot == 2 and not acl_check(_dst_id, _target_system['TG2_ACL']):
                                 if self._laststrid != _stream_id:
-                                    logger.debug('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', _target_system, int_id(_stream_id), int_id(_dst_id))
+                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', _target_system, int_id(_stream_id), int_id(_dst_id))
                                     self._laststrid = _stream_id
                                 return
                         self._laststrid = _stream_id

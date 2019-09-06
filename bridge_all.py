@@ -78,10 +78,10 @@ class bridgeallSYSTEM(HBSYSTEM):
         
         # Status information for the system, TS1 & TS2
         # 1 & 2 are "timeslot"
-        # In TX_EMB_LC, 2-5 are burst B-E
         self.STATUS = {
             1: {
                 'RX_START':     time(),
+                'RX_LOSS':      0,
                 'RX_SEQ':       '\x00',
                 'RX_RFS':       '\x00',
                 'TX_RFS':       '\x00',
@@ -92,18 +92,10 @@ class bridgeallSYSTEM(HBSYSTEM):
                 'RX_TIME':      time(),
                 'TX_TIME':      time(),
                 'RX_TYPE':      const.HBPF_SLT_VTERM,
-                'RX_LC':        '\x00',
-                'TX_H_LC':      '\x00',
-                'TX_T_LC':      '\x00',
-                'TX_EMB_LC': {
-                    1: '\x00',
-                    2: '\x00',
-                    3: '\x00',
-                    4: '\x00',
-                    }
                 },
             2: {
                 'RX_START':     time(),
+                'RX:LOSS':      0,
                 'RX_SEQ':       '\x00',
                 'RX_RFS':       '\x00',
                 'TX_RFS':       '\x00',
@@ -114,15 +106,6 @@ class bridgeallSYSTEM(HBSYSTEM):
                 'RX_TIME':      time(),
                 'TX_TIME':      time(),
                 'RX_TYPE':      const.HBPF_SLT_VTERM,
-                'RX_LC':        '\x00',
-                'TX_H_LC':      '\x00',
-                'TX_T_LC':      '\x00',
-                'TX_EMB_LC': {
-                    1: '\x00',
-                    2: '\x00',
-                    3: '\x00',
-                    4: '\x00',
-                    }
                 }
             }
 
@@ -138,14 +121,21 @@ class bridgeallSYSTEM(HBSYSTEM):
             
             if new_stream:
                 self.STATUS[_slot]['RX_START'] = pkt_time
+                self.STATUS[_slot]['RX_LOSS'] = 0
+                self.STATUS[_slot]['RX_SEQ'] = _seq
                 logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            else:
+                # This could be much better, it will have errors during roll-over
+                if _seq > (self.STATUS[_slot]['RX_SEQ'] + 1):
+                    print(_seq, self.STATUS[_slot]['RX_SEQ'])
+                    self.STATUS[_slot]['RX_LOSS'] += _seq - (self.STATUS[_slot]['RX_SEQ'] + 1)
             
             # Final actions - Is this a voice terminator?
             if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM):
                 call_duration = pkt_time - self.STATUS[_slot]['RX_START']
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
+                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Loss: %s, Duration: %s', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, self.STATUS[_slot]['RX_LOSS'], call_duration)
             
              
             for _target in self._CONFIG['SYSTEMS']: 
@@ -232,6 +222,7 @@ class bridgeallSYSTEM(HBSYSTEM):
       
             # Mark status variables for use later
             self.STATUS[_slot]['RX_RFS']       = _rf_src
+            self.STATUS[_slot]['RX_SEQ']       = _seq
             self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time

@@ -134,69 +134,108 @@ class bridgeallSYSTEM(HBSYSTEM):
         if _call_type == 'group':
             
             # Is this is a new call stream?
-            if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
-                self.STATUS['RX_START'] = pkt_time
+            new_stream = (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'])
+            
+            if new_stream:
+                self.STATUS[_slot]['RX_START'] = pkt_time
                 logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             
             # Final actions - Is this a voice terminator?
             if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM):
-                call_duration = pkt_time - self.STATUS['RX_START']
+                call_duration = pkt_time - self.STATUS[_slot]['RX_START']
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
             
+             
+            for _target in self._CONFIG['SYSTEMS']: 
+                if _target != self._system:
+                    
+                    _target_status = systems[_target].STATUS
+                    _target_system = self._CONFIG['SYSTEMS'][_target]
+                    
+                    # BEGIN STANDARD CONTENTION HANDLING
+                    #
+                    # The rules for each of the 4 "ifs" below are listed here for readability. The Frame To Send is:
+                    #   From a different group than last RX from this HBSystem, but it has been less than Group Hangtime
+                    #   From a different group than last TX to this HBSystem, but it has been less than Group Hangtime
+                    #   From the same group as the last RX from this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                    #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                    # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
+                    #
+                    if ((_dst_id != _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                            logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
+                        continue
+                    if ((_dst_id != _target_status[_slot]['TX_TGID']) and ((pkt_time - _target_status[_slot]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                            logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
+                        continue
+                    if (_dst_id == _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < STREAM_TO):
+                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                            logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
+                        continue
+                    if (_dst_id == _target_status[_slot]['TX_TGID']) and (_rf_src != _target_status[_slot]['TX_RFS']) and ((pkt_time - _target_status[_slot]['TX_TIME']) < STREAM_TO):
+                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                            logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
+                        continue
+                                 
+                        
+                    # ACL Processing
+                    if self._CONFIG['GLOBAL']['USE_ACL']:
+                        if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
+                            if _stream_id != _target_status[_slot]['TX_STREAM_ID']:
+                                logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', _target, int_id(_stream_id), int_id(_rf_src))
+                                _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                            continue
+                        if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
+                            if _stream_id != _target_status[_slot]['TX_STREAM_ID']:
+                                logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', _target, int_id(_stream_id), int_id(_dst_id))
+                                _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                            continue
+                        if _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
+                            if _stream_id != _target_status[_slot]['TX_STREAM_ID']:
+                                logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', _target, int_id(_stream_id), int_id(_dst_id))
+                                _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                            continue
+                    if _target_system['USE_ACL']:
+                        if not acl_check(_rf_src, _target_system['SUB_ACL']):
+                            if _stream_id != _target_status[_slot]['TX_STREAM_ID']:
+                                logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', _target, int_id(_stream_id), int_id(_rf_src))
+                                _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                            continue
+                        if _slot == 1 and not acl_check(_dst_id, _target_system['TG1_ACL']):
+                            if _stream_id != _target_status[_slot]['TX_STREAM_ID']:
+                                logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', _target, int_id(_stream_id), int_id(_dst_id))
+                                _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                            continue
+                        if _slot == 2 and not acl_check(_dst_id, _target_system['TG2_ACL']):
+                            if _stream_id != _target_status[_slot]['TX_STREAM_ID']:
+                                logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', _target, int_id(_stream_id), int_id(_dst_id))
+                                _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                            continue
+                    
+                    # Record this stuff for later
+                    # Is this a new call stream?
+                    if new_stream:
+                         # Record the DST TGID and Stream ID
+                         _target_status[_slot]['TX_START'] = pkt_time
+                         _target_status[_slot]['TX_TGID'] = _dst_id
+                         _target_status[_slot]['TX_RFS'] = _rf_src
+                         _target_status[_slot]['TX_PEER'] = _peer_id
+                         _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                         
+                    _target_status[_slot]['TX_TIME'] = pkt_time
+                    
+                    systems[_target].send_system(_data)
+                    #logger.debug('(%s) Packet routed to system: %s', self._system, _target)
+      
             # Mark status variables for use later
             self.STATUS[_slot]['RX_RFS']       = _rf_src
             self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
             self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
-            
-            
-            for _target in self._CONFIG['SYSTEMS']: 
-                    if _target != self._system:
-                        
-                        _target_status = systems[_target].STATUS
-                        _target_system = self._CONFIG['SYSTEMS'][_target]
-                        _target_status[_slot]['TX_STREAM_ID'] = _stream_id
-                            
-                        # ACL Processing
-                        if self._CONFIG['GLOBAL']['USE_ACL']:
-                            if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
-                                if self._laststrid != _stream_id:
-                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', _target, int_id(_stream_id), int_id(_rf_src))
-                                    self._laststrid = _stream_id
-                                return
-                            if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
-                                if self._laststrid != _stream_id:
-                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', _target, int_id(_stream_id), int_id(_dst_id))
-                                    self._laststrid = _stream_id
-                                return
-                            if _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
-                                if self._laststrid != _stream_id:
-                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', _target, int_id(_stream_id), int_id(_dst_id))
-                                    self._laststrid = _stream_id
-                                return
-                        if _target_system['USE_ACL']:
-                            if not acl_check(_rf_src, _target_system['SUB_ACL']):
-                                if self._laststrid != _stream_id:
-                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', _target, int_id(_stream_id), int_id(_rf_src))
-                                    self._laststrid = _stream_id
-                                return
-                            if _slot == 1 and not acl_check(_dst_id, _target_system['TG1_ACL']):
-                                if self._laststrid != _stream_id:
-                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', _target, int_id(_stream_id), int_id(_dst_id))
-                                    self._laststrid = _stream_id
-                                return
-                            if _slot == 2 and not acl_check(_dst_id, _target_system['TG2_ACL']):
-                                if self._laststrid != _stream_id:
-                                    logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', _target, int_id(_stream_id), int_id(_dst_id))
-                                    self._laststrid = _stream_id
-                                return
-                        self._laststrid = _stream_id
-                        
-                        systems[_target].send_system(_data)
-                        #logger.debug('(%s) Packet routed to system: %s', self._system, _target)
                 
 
 #************************************************

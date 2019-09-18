@@ -129,7 +129,7 @@ class bridgeallSYSTEM(HBSYSTEM):
             else:
                 # This could be much better, it will have errors during roll-over
                 if seq > (self.STATUS[_slot]['RX_SEQ'] + 1):
-                    print(seq, self.STATUS[_slot]['RX_SEQ'])
+                    #print(seq, self.STATUS[_slot]['RX_SEQ'])
                     self.STATUS[_slot]['RX_LOSS'] += seq - (self.STATUS[_slot]['RX_SEQ'] + 1)
             
             # Final actions - Is this a voice terminator?

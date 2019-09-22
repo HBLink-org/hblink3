@@ -10,7 +10,7 @@ RUN apt update && \
     cd /opt && \
     rm -rf /usr/src/dmr_utils3 && \
     git clone https://github.com/n0mjs710/hblink3
-
+ENV AAA BBBB
 RUN cd /opt/hblink3/ && \
     sed -i s/.*python.*//g  requirements.txt && \
     pip install --no-cache-dir -r requirements.txt
@@ -23,8 +23,6 @@ RUN adduser -u 54000 radio && \
     chmod 755 /entrypoint && \
     chown radio:radio /entrypoint && \
     chown radio /opt/hblink3
-
-RUN chmod 755 /entrypoint
 
 USER radio 
 EXPOSE 54000

@@ -206,8 +206,7 @@ class HBSYSTEM(DatagramProtocol):
         self._system = _name
         self._report = _report
         self._config = self._CONFIG['SYSTEMS'][self._system]
-        self._laststrid1 = ''
-        self._laststrid2 = ''
+        self._laststrid = {1: b'', 2: b''}
 
         # Define shortcuts and generic function names based on the type of system we are
         if self._config['MODE'] == 'MASTER':
@@ -357,41 +356,35 @@ class HBSYSTEM(DatagramProtocol):
                 # ACL Processing
                 if self._CONFIG['GLOBAL']['USE_ACL']:
                     if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
-                        if self._laststrid != _stream_id:
+                        if self._laststrid[_slot] != _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', self._system, int_id(_stream_id), int_id(_rf_src))
-                            if _slot == 1:
-                                self._laststrid1 = _stream_id
-                            else:
-                                self._laststrid2 = _stream_id
+                            self._laststrid[_slot] = _stream_id
                         return
                     if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
-                        if self._laststrid1 != _stream_id:
+                        if self._laststrid[_slot] != _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self._laststrid1 = _stream_id
+                            self._laststrid[_slot] = _stream_id
                         return
                     if _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
-                        if self._laststrid2 != _stream_id:
+                        if self._laststrid[_slot] != _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self._laststrid2 = _stream_id
+                            self._laststrid[_slot] = _stream_id
                         return
                 if self._config['USE_ACL']:
                     if not acl_check(_rf_src, self._config['SUB_ACL']):
-                        if self._laststrid != _stream_id:
+                        if self._laststrid[_slot] != _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
-                            if _slot == 1:
-                                self._laststrid1 = _stream_id
-                            else:
-                                self._laststrid2 = _stream_id
+                            self._laststrid[_slot] = _stream_id
                         return
                     if _slot == 1 and not acl_check(_dst_id, self._config['TG1_ACL']):
-                        if self._laststrid1 != _stream_id:
+                        if self._laststrid[_slot] != _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self._laststrid1 = _stream_id
+                            self._laststrid[_slot] = _stream_id
                         return
                     if _slot == 2 and not acl_check(_dst_id, self._config['TG2_ACL']):
-                        if self._laststrid2 != _stream_id:
+                        if self._laststrid[_slot]!= _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self._laststrid2 = _stream_id
+                            self._laststrid[_slot] = _stream_id
                         return
 
                 # The basic purpose of a master is to repeat to the peers
@@ -562,41 +555,35 @@ class HBSYSTEM(DatagramProtocol):
                     # ACL Processing
                     if self._CONFIG['GLOBAL']['USE_ACL']:
                         if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
-                            if self._laststrid != _stream_id:
-                                logger.debug('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', self._system, int_id(_stream_id), int_id(_rf_src))
-                                if _slot == 1:
-                                    self._laststrid1 = _stream_id
-                                else:
-                                    self._laststrid2 = _stream_id
+                            if self._laststrid[_slot] != _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', self._system, int_id(_stream_id), int_id(_rf_src))
+                                self._laststrid[_slot] = _stream_id
                             return
                         if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
-                            if self._laststrid1 != _stream_id:
-                                logger.debug('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                                self._laststrid1 = _stream_id
+                            if self._laststrid[_slot] != _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self._laststrid[_slot] = _stream_id
                             return
                         if _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
-                            if self._laststrid2 != _stream_id:
-                                logger.debug('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                                self._laststrid2 = _stream_id
+                            if self._laststrid[_slot] != _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self._laststrid[_slot] = _stream_id
                             return
                     if self._config['USE_ACL']:
                         if not acl_check(_rf_src, self._config['SUB_ACL']):
-                            if self._laststrid != _stream_id:
-                                logger.debug('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
-                                if _slot == 1:
-                                    self._laststrid1 = _stream_id
-                                else:
-                                    self._laststrid2 = _stream_id
+                            if self._laststrid[_slot] != _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
+                                self._laststrid[_slot] = _stream_id
                             return
                         if _slot == 1 and not acl_check(_dst_id, self._config['TG1_ACL']):
-                            if self._laststrid1 != _stream_id:
-                                logger.debug('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                                self._laststrid1 = _stream_id
+                            if self._laststrid[_slot] != _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self._laststrid[_slot] = _stream_id
                             return
                         if _slot == 2 and not acl_check(_dst_id, self._config['TG2_ACL']):
-                            if self._laststrid2 != _stream_id:
-                                logger.debug('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                                self._laststrid2 = _stream_id
+                            if self._laststrid[_slot] != _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self._laststrid[_slot] = _stream_id
                             return
 
 

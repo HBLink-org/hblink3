@@ -114,32 +114,34 @@ class playback(HBSYSTEM):
         dmrpkt = _data[20:53]
         _bits = _data[15]
         if _call_type == 'group':
-
+            
             # Is this is a new call stream?
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 self.STATUS['RX_START'] = pkt_time
-                logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s', \
+                logger.info('(%s) *START RECORDING* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s', \
                                   self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
-
+                self.CALL_DATA.append(_data)
+                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+                return
 
             # Final actions - Is this a voice terminator?
-            if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM):
+            if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM) and (self.CALL_DATA):
                 call_duration = pkt_time - self.STATUS['RX_START']
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
-                                  self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 self.CALL_DATA.append(_data)
+                logger.info('(%s) *END   RECORDING* STREAM ID: %s', self._system, int_id(_stream_id))
                 sleep(2)
-                logger.info('(%s) Playing back transmission from subscriber: %s', self._system, int_id(_rf_src))
+                logger.info('(%s) *START  PLAYBACK* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
+                                  self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 for i in self.CALL_DATA:
                     self.send_system(i)
                     #print(i)
                     sleep(0.06)
                 self.CALL_DATA = []
+                logger.info('(%s) *END    PLAYBACK* STREAM ID: %s', self._system, int_id(_stream_id))
 
             else:
-                if not self.CALL_DATA:
-                    logger.info('(%s) Receiving transmission to be played back from subscriber: %s', self._system, int_id(_rf_src))
-                self.CALL_DATA.append(_data)
+                if self.CALL_DATA:
+                    self.CALL_DATA.append(_data)
 
 
             # Mark status variables for use later

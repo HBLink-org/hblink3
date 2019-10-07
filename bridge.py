@@ -34,7 +34,7 @@ This program currently only works with group voice calls.
 import sys
 from bitarray import bitarray
 from time import time
-from importlib import import_module
+import importlib.util
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -94,16 +94,10 @@ def config_reports(_config, _factory):
 # configuration file and listed as "active". It can be empty,
 # but it has to exist.
 def make_bridges(_rules):
-    try:
-        bridge_file = import_module(_rules)
-        logger.info('(ROUTER) Routing bridges file found and bridges imported')
-    except ImportError:
-        sys.exit('(ROUTER) TERMINATING: Routing bridges file not found or invalid')
-
     # Convert integer GROUP ID numbers from the config into hex strings
     # we need to send in the actual data packets.
-    for _bridge in bridge_file.BRIDGES:
-        for _system in bridge_file.BRIDGES[_bridge]:
+    for _bridge in _rules:
+        for _system in _rules[_bridge]:
             if _system['SYSTEM'] not in CONFIG['SYSTEMS']:
                 sys.exit('ERROR: Conference bridge "{}" references a system named "{}" that is not enabled in the main configuration'.format(_bridge, _system['SYSTEM']))
 
@@ -117,7 +111,7 @@ def make_bridges(_rules):
                 _system['TIMER']  = time() + _system['TIMEOUT']
             else:
                 _system['TIMER']  = time()
-    return bridge_file.BRIDGES
+    return _rules
 
 
 # Run this every minute for rule timer updates
@@ -741,6 +735,7 @@ if __name__ == '__main__':
     # CLI argument parser - handles picking up the config file from the command line, and sending a "help" message
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually hblink.cfg)')
+    parser.add_argument('-r', '--rules', action='store', dest='RULES_FILE', help='/full/path/to/rules.file (usually rules.py)')
     parser.add_argument('-l', '--logging', action='store', dest='LOG_LEVEL', help='Override config file logging level.')
     cli_args = parser.parse_args()
 
@@ -750,6 +745,10 @@ if __name__ == '__main__':
 
     # Call the external routine to build the configuration dictionary
     CONFIG = config.build_config(cli_args.CONFIG_FILE)
+
+    # Ensure we have a path for the rules file, if one wasn't specified, then use the default (top of file)
+    if not cli_args.RULES_FILE:
+        cli_args.RULES_FILE = os.path.dirname(os.path.abspath(__file__))+'/rules.py'
 
     # Start the system logger
     if cli_args.LOG_LEVEL:
@@ -771,9 +770,18 @@ if __name__ == '__main__':
 
     # Create the name-number mapping dictionaries
     peer_ids, subscriber_ids, talkgroup_ids = mk_aliases(CONFIG)
+    
+    # Import the ruiles file as a module, and create BRIDGES from it
+    spec = importlib.util.spec_from_file_location("module.name", cli_args.RULES_FILE)
+    rules_module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(rules_module)
+        logger.info('(ROUTER) Routing bridges file found and bridges imported: %s', cli_args.RULES_FILE)
+    except (ImportError, FileNotFoundError):
+        sys.exit('(ROUTER) TERMINATING: Routing bridges file not found or invalid: {}'.format(cli_args.RULES_FILE))
 
     # Build the routing rules file
-    BRIDGES = make_bridges('rules')
+    BRIDGES = make_bridges(rules_module.BRIDGES)
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:

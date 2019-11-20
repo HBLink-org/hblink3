@@ -113,7 +113,6 @@ class bridgeallSYSTEM(HBSYSTEM):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-        seq = int.from_bytes(_seq, byteorder='big')
 
         if _call_type == 'group':
             
@@ -123,14 +122,14 @@ class bridgeallSYSTEM(HBSYSTEM):
             if new_stream:
                 self.STATUS[_slot]['RX_START'] = pkt_time
                 self.STATUS[_slot]['RX_LOSS'] = 0
-                self.STATUS[_slot]['RX_SEQ'] = seq
+                self.STATUS[_slot]['RX_SEQ'] = _seq
                 logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             else:
                 # This could be much better, it will have errors during roll-over
-                if seq > (self.STATUS[_slot]['RX_SEQ'] + 1):
-                    #print(seq, self.STATUS[_slot]['RX_SEQ'])
-                    self.STATUS[_slot]['RX_LOSS'] += seq - (self.STATUS[_slot]['RX_SEQ'] + 1)
+                if _seq > (self.STATUS[_slot]['RX_SEQ'] + 1):
+                    #print(_seq, self.STATUS[_slot]['RX_SEQ'])
+                    self.STATUS[_slot]['RX_LOSS'] += _seq - (self.STATUS[_slot]['RX_SEQ'] + 1)
             
             # Final actions - Is this a voice terminator?
             if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM):
@@ -223,7 +222,7 @@ class bridgeallSYSTEM(HBSYSTEM):
       
             # Mark status variables for use later
             self.STATUS[_slot]['RX_RFS']       = _rf_src
-            self.STATUS[_slot]['RX_SEQ']       = seq
+            self.STATUS[_slot]['RX_SEQ']       = _seq
             self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time

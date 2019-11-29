@@ -67,6 +67,13 @@ __email__      = 'n0mjs@me.com'
 
 # Module gobal varaibles
 
+# Dictionary for dynamically mapping unit (subscriber) to a system.
+# This is for pruning unit-to-uint calls to not broadcast once the
+# target system for a unit is identified
+# format 'unit_id': ('SYSTEM', time)
+UNIT_MAP = {} 
+
+
 # Timed loop used for reporting HBP status
 #
 # REPORT BASED ON THE TYPE SELECTED IN THE MAIN CONFIG FILE
@@ -116,6 +123,7 @@ def make_bridges(_rules):
 
 # Run this every minute for rule timer updates
 def rule_timer_loop():
+    global UNIT_MAP
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
     _now = time()
 
@@ -143,6 +151,18 @@ def rule_timer_loop():
                     logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             else:
                 logger.debug('(ROUTER) Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+    
+    _then = _now - 60
+    remove_list = []
+    for unit in UNIT_MAP:
+        if UNIT_MAP[unit][1] < (_then):
+            remove_list.append(unit)
+    
+    for unit in remove_list:
+        del UNIT_MAP[unit]
+        
+    logger.debug('Removed unit(s) %s from UNIT_MAP', remove_list)
+            
 
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
@@ -396,6 +416,7 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
+        
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
 
@@ -413,6 +434,7 @@ class routerHBP(HBSYSTEM):
 
     def __init__(self, _name, _config, _report):
         HBSYSTEM.__init__(self, _name, _config, _report)
+        self.name = _name
 
         # Status information for the system, TS1 & TS2
         # 1 & 2 are "timeslot"
@@ -471,14 +493,7 @@ class routerHBP(HBSYSTEM):
                     }
                 }
             }
-        
-        # Dictionary for dynamically mapping unit (subscriber) to a system.
-        # This is for pruning unit-to-uint calls to not broadcast once the
-        # target system for a unit is identified
-        # format 'unit_id': ('SYSTEM', time)
-        self.UNIT_MAP = {}    
-        
-
+            
 
     def group_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
@@ -725,10 +740,16 @@ class routerHBP(HBSYSTEM):
 
 
     def unit_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
+        global UNIT_MAP
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-        print('UNIT CALL')
+        print(UNIT_MAP)
+        if _rf_src not in UNIT_MAP:
+            UNIT_MAP[_rf_src] = [self.name, pkt_time]
+        else:
+            UNIT_MAP[_rf_src][1] = pkt_time
+        
         
         
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):

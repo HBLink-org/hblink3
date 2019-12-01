@@ -436,6 +436,9 @@ class routerHBP(HBSYSTEM):
         HBSYSTEM.__init__(self, _name, _config, _report)
         self.name = _name
 
+        # list of targets for unit (subscriber, private) calls
+        self.targets = []
+        
         # Status information for the system, TS1 & TS2
         # 1 & 2 are "timeslot"
         # In TX_EMB_LC, 2-5 are burst B-E
@@ -756,16 +759,29 @@ class routerHBP(HBSYSTEM):
         
         # Is this a new call stream?
         if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+            # Create a destination list for the call:
+            if _dst_id in UNIT_MAP:
+                if UNIT_MAP[_dst_id][0] != self._system:
+                    self._targets = [UNIT_MAP[_dst_id][0]]
+                    _target_route = UNIT_MAP[_dst_id][0]
+                else:
+                    self._targets = []
+                    logger.debug('UNIT call to a subscriber on the same system, send nothing')
+            else:
+                self._targets = list(systems)
+                self._targets.remove(self._system)
+                _target_route = 'FLOOD'
+            
             if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
                 logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> UNIT %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
                 return
 
             # This is a new call stream
             self.STATUS[_slot]['RX_START'] = pkt_time
-            logger.info('(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT %s (%s), TS %s', \
-                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            logger.info('(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT: %s (%s), TS: %s, FORWARD: %s', \
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _target_route)
             if CONFIG['REPORTS']['REPORT']:
-                self._report.send_bridgeEvent('UNIT VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                self._report.send_bridgeEvent('UNIT VOICE,START,RX,{},{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), _target_route).encode(encoding='utf-8', errors='ignore'))
 
             # If we can, use the LC from the voice header as to keep all options intact
             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
@@ -776,45 +792,35 @@ class routerHBP(HBSYSTEM):
             # just make a new one from the HBP header. This is good enough, and it saves lots of time
             else:
                 self.STATUS[_slot]['RX_LC'] = LC_OPT + _dst_id + _rf_src
-        
-        
-        #if _dst_id in UNIT_MAP:
-        if True:
-            _target = UNIT_MAP[_dst_id][0]
+
+        for _target in self._targets:
+            if self._CONFIG['SYSTEMS'][_target]['MODE'] == 'OPENBRIDGE':
+                # THIS IS ONLY UNTIL OPENBRIDGE IS SUPPORTED
+                continue
+
+            _target_status = systems[_target].STATUS
+            #_target_system = self._CONFIG['SYSTEMS'][_target]
+                
+            # Is this a new call stream?
+            if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                # Record the DST TGID and Stream ID
+                _target_status[_slot]['TX_START'] = pkt_time
+                _target_status[_slot]['TX_TGID'] = _dst_id
+                _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                _target_status[_slot]['TX_RFS'] = _rf_src
+                _target_status[_slot]['TX_PEER'] = _peer_id
             
-            #if _target != self._system:
-            if True:
-                _target_status = systems[_target].STATUS
-                _target_system = self._CONFIG['SYSTEMS'][_target]
-    
-                    
-                # Is this a new call stream?
-                if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
-                     # Record the DST TGID and Stream ID
-                     _target_status[_slot]['TX_START'] = pkt_time
-                     _target_status[_slot]['TX_TGID'] = _dst_id
-                     _target_status[_slot]['TX_STREAM_ID'] = _stream_id
-                     _target_status[_slot]['TX_RFS'] = _rf_src
-                     _target_status[_slot]['TX_PEER'] = _peer_id
-                
-                # Set other values for the contention handler to test next time there is a frame to forward
-                _target_status[_slot]['TX_TIME'] = pkt_time
-                _target_status[_slot]['TX_TYPE'] = _dtype_vseq
-                
-                #send the call:
+            # Set other values for the contention handler to test next time there is a frame to forward
+            _target_status[_slot]['TX_TIME'] = pkt_time
+            _target_status[_slot]['TX_TYPE'] = _dtype_vseq
             
-                systems[_target].send_system(_data)
-                
-                
-        else:
-            pass
-            #for target in systems:
-            #    systems[target].send_system(_data)
-            
-        
+            #send the call:
+            systems[_target].send_system(_data)
+
         
         # Final actions - Is this a voice terminator?
         if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+            self._targets = []
             call_duration = pkt_time - self.STATUS[_slot]['RX_START']
             logger.info('(%s) *UNIT CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT %s (%s), TS %s, Duration: %.2f', \
                     self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)

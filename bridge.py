@@ -504,11 +504,8 @@ class routerHBP(HBSYSTEM):
         dmrpkt = _data[20:53]
         _bits = _data[15]
         
-        # Make an entry in the UNIT_MAP for this subscriber
-        if _rf_src not in UNIT_MAP:
-            UNIT_MAP[_rf_src] = [self.name, pkt_time]
-        else:
-            UNIT_MAP[_rf_src][1] = pkt_time
+        # Make/update an entry in the UNIT_MAP for this subscriber
+        UNIT_MAP[_rf_src] = (self.name, pkt_time)
 
         # Is this a new call stream?
         if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
@@ -752,13 +749,18 @@ class routerHBP(HBSYSTEM):
         dmrpkt = _data[20:53]
         _bits = _data[15]
  
-        if _rf_src not in UNIT_MAP:
-            UNIT_MAP[_rf_src] = [self.name, pkt_time]
-        else:
-            UNIT_MAP[_rf_src][1] = pkt_time
+        # Make/update this unit in the UNIT_MAP cache
+        UNIT_MAP[_rf_src] = (self.name, pkt_time)
+        
         
         # Is this a new call stream?
         if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+            
+            # Collision in progress, bail out!
+            if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
+                logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> UNIT %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
+                return
+                
             # Create a destination list for the call:
             if _dst_id in UNIT_MAP:
                 if UNIT_MAP[_dst_id][0] != self._system:
@@ -772,17 +774,14 @@ class routerHBP(HBSYSTEM):
                 self._targets.remove(self._system)
                 _target_route = 'FLOOD'
             
-            if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
-                logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> UNIT %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
-                return
-
-            # This is a new call stream
+            # This is a new call stream, so log & report
             self.STATUS[_slot]['RX_START'] = pkt_time
             logger.info('(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT: %s (%s), TS: %s, FORWARD: %s', \
                     self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _target_route)
             if CONFIG['REPORTS']['REPORT']:
                 self._report.send_bridgeEvent('UNIT VOICE,START,RX,{},{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), _target_route).encode(encoding='utf-8', errors='ignore'))
-
+            
+            ''' LC CREATION NOT NECESSARY, SINCE WE'RE NOT TRANSCODING
             # If we can, use the LC from the voice header as to keep all options intact
             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                 decoded = decode.voice_head_term(dmrpkt)
@@ -792,27 +791,55 @@ class routerHBP(HBSYSTEM):
             # just make a new one from the HBP header. This is good enough, and it saves lots of time
             else:
                 self.STATUS[_slot]['RX_LC'] = LC_OPT + _dst_id + _rf_src
-
+            '''
+                
         for _target in self._targets:
+            _target_status = systems[_target].STATUS
+            _target_system = self._CONFIG['SYSTEMS'][_target]
+            
             if self._CONFIG['SYSTEMS'][_target]['MODE'] == 'OPENBRIDGE':
                 # THIS IS ONLY UNTIL OPENBRIDGE IS SUPPORTED
                 continue
-
-            _target_status = systems[_target].STATUS
-            #_target_system = self._CONFIG['SYSTEMS'][_target]
-                
-            # Is this a new call stream?
-            if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
-                # Record the DST TGID and Stream ID
-                _target_status[_slot]['TX_START'] = pkt_time
-                _target_status[_slot]['TX_TGID'] = _dst_id
-                _target_status[_slot]['TX_STREAM_ID'] = _stream_id
-                _target_status[_slot]['TX_RFS'] = _rf_src
-                _target_status[_slot]['TX_PEER'] = _peer_id
             
-            # Set other values for the contention handler to test next time there is a frame to forward
-            _target_status[_slot]['TX_TIME'] = pkt_time
-            _target_status[_slot]['TX_TYPE'] = _dtype_vseq
+            else:
+                # BEGIN STANDARD CONTENTION HANDLING
+                #
+                # The rules for each of the 4 "ifs" below are listed here for readability. The Frame To Send is:
+                #   From a different group than last RX from this HBSystem, but it has been less than Group Hangtime
+                #   From a different group than last TX to this HBSystem, but it has been less than Group Hangtime
+                #   From the same group as the last RX from this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
+                #
+                if ((_dst_id != _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                        logger.info('(%s) Call not routed to destination %s, target active or in group hangtime: HBSystem: %s, TS: %s, DEST: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['RX_TGID']))
+                    continue
+                if ((_dst_id != _target_status[_slot]['TX_TGID']) and ((pkt_time - _target_status[_slot]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                        logger.info('(%s) Call not routed to destination %s, target in group hangtime: HBSystem: %s, TS: %s, DEST: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['TX_TGID']))
+                    continue
+                if (_dst_id == _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < STREAM_TO):
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                        logger.info('(%s) Call not routed to destination %s, matching call already active on target: HBSystem: %s, TS: %s, DEST: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['RX_TGID']))
+                    continue
+                if (_dst_id == _target_status[_slot]['TX_TGID']) and (_rf_src != _target_status[_slot]['TX_RFS']) and ((pkt_time - _target_status[_slot]['TX_TIME']) < STREAM_TO):
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                        logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, DEST: %s, SUB: %s', self._system, int_id(_rf_src), _target, _slot, int_id(_target_status[_slot]['TX_TGID']), int_id(_target_status[_slot]['TX_RFS']))
+                    continue
+                    
+                # Record target information if this is a new call stream?
+                if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                    # Record the DST TGID and Stream ID
+                    _target_status[_slot]['TX_START'] = pkt_time
+                    _target_status[_slot]['TX_TGID'] = _dst_id
+                    _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                    _target_status[_slot]['TX_RFS'] = _rf_src
+                    _target_status[_slot]['TX_PEER'] = _peer_id
+            
+                # Set other values for the contention handler to test next time there is a frame to forward
+                _target_status[_slot]['TX_TIME'] = pkt_time
+                _target_status[_slot]['TX_TYPE'] = _dtype_vseq
             
             #send the call:
             systems[_target].send_system(_data)

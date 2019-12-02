@@ -795,9 +795,9 @@ class routerHBP(HBSYSTEM):
                         'TGID':      _dst_id,
                     }
 
-                    logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, TGID: %s', self._system, _target, _target['TS'], int_id(_target['TGID']))
+                    logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, TGID: %s', self._system, _target, _slot, int_id(_dst_id))
                     if CONFIG['REPORTS']['REPORT']:
-                        systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                        systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id).encode(encoding='utf-8', errors='ignore'))
 
                 # Record the time of this packet so we can later identify a stale stream
                 _target_status[_stream_id]['LAST'] = pkt_time
@@ -844,6 +844,10 @@ class routerHBP(HBSYSTEM):
                     _target_status[_slot]['TX_STREAM_ID'] = _stream_id
                     _target_status[_slot]['TX_RFS'] = _rf_src
                     _target_status[_slot]['TX_PEER'] = _peer_id
+                    
+                    logger.info('(%s) Unit call bridged to HBP System: %s TS: %s, UNIT: %s', self._system, _target, _slot, int_id(_dst_id))
+                    if CONFIG['REPORTS']['REPORT']:
+                       systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
                 # Set other values for the contention handler to test next time there is a frame to forward
                 _target_status[_slot]['TX_TIME'] = pkt_time

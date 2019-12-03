@@ -797,7 +797,7 @@ class routerHBP(HBSYSTEM):
 
                     logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, TGID: %s', self._system, _target, _slot, int_id(_dst_id))
                     if CONFIG['REPORTS']['REPORT']:
-                        systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id).encode(encoding='utf-8', errors='ignore'))
+                        systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id).encode(encoding='utf-8', errors='ignore')))
 
                 # Record the time of this packet so we can later identify a stale stream
                 _target_status[_stream_id]['LAST'] = pkt_time

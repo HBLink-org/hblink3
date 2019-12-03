@@ -869,7 +869,8 @@ class routerHBP(HBSYSTEM):
         if _call_type == 'group':
             self.group_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
         elif _call_type == 'unit':
-            self.unit_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
+            if UNIT:
+                self.unit_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
         elif _call_type == 'vscsbk':
             logger.debug('CSBK recieved, but HBlink does not process them currently')
         else:
@@ -954,6 +955,9 @@ if __name__ == '__main__':
 
     # Build the routing rules file
     BRIDGES = make_bridges(rules_module.BRIDGES)
+    
+    # Get rule parameter for private calls
+    UNIT = rules_module.BRIDGES
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:

@@ -220,7 +220,7 @@ class routerOBP(OPENBRIDGE):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
 
-    def group_recieved(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
+    def group_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
@@ -797,7 +797,7 @@ class routerHBP(HBSYSTEM):
 
                     logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, TGID: %s', self._system, _target, _slot, int_id(_dst_id))
                     if CONFIG['REPORTS']['REPORT']:
-                        systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id).encode(encoding='utf-8', errors='ignore')))
+                        systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
                 # Record the time of this packet so we can later identify a stale stream
                 _target_status[_stream_id]['LAST'] = pkt_time
@@ -806,9 +806,8 @@ class routerHBP(HBSYSTEM):
 
                 # Assemble transmit HBP packet
                 _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-                _tmp_data = b''.join([_tmp_data, dmrpkt])
-                
-            
+                _data = b''.join([_tmp_data, dmrpkt])
+
             else:
                 # BEGIN STANDARD CONTENTION HANDLING
                 #
@@ -847,7 +846,7 @@ class routerHBP(HBSYSTEM):
                     
                     logger.info('(%s) Unit call bridged to HBP System: %s TS: %s, UNIT: %s', self._system, _target, _slot, int_id(_dst_id))
                     if CONFIG['REPORTS']['REPORT']:
-                       systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                       systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
                 # Set other values for the contention handler to test next time there is a frame to forward
                 _target_status[_slot]['TX_TIME'] = pkt_time
@@ -969,7 +968,7 @@ if __name__ == '__main__':
     BRIDGES = make_bridges(rules_module.BRIDGES)
     
     # Get rule parameter for private calls
-    UNIT = rules_module.BRIDGES
+    UNIT = rules_module.UNIT
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:

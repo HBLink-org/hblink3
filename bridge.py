@@ -427,7 +427,14 @@ class routerOBP(OPENBRIDGE):
         
         
         # Is this a new call stream?
-        if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+        if (_stream_id not in self.STATUS):
+            # This is a new call stream
+            self.STATUS[_stream_id] = {
+                'START':     pkt_time,
+                'CONTENTION':False,
+                'RFS':       _rf_src,
+                'TGID':      _dst_id,
+            }
             
             # Collision in progress, bail out!
             if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):

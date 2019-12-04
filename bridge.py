@@ -218,7 +218,11 @@ class routerOBP(OPENBRIDGE):
 
     def __init__(self, _name, _config, _report):
         OPENBRIDGE.__init__(self, _name, _config, _report)
+        self.name = _name
         self.STATUS = {}
+        
+        # list of targets for unit (subscriber, private) calls
+        self.targets = []
 
     def group_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()

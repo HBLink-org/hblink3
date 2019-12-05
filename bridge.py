@@ -511,7 +511,7 @@ class routerOBP(OPENBRIDGE):
                     continue
 
                 # Record target information if this is a new call stream?
-                if (_stream_id not in self.STATUS):
+                if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                     # Record the DST TGID and Stream ID
                     _target_status[_slot]['TX_START'] = pkt_time
                     _target_status[_slot]['TX_TGID'] = _dst_id

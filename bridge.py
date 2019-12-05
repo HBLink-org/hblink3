@@ -450,7 +450,7 @@ class routerOBP(OPENBRIDGE):
                 _target_route = 'FLOOD'
             
             # This is a new call stream, so log & report
-            self.STATUS[_slot]['RX_START'] = pkt_time
+            self.STATUS['START'] = pkt_time
             logger.info('(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT: %s (%s), TS: %s, FORWARD: %s', \
                     self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _target_route)
             if CONFIG['REPORTS']['REPORT']:
@@ -539,15 +539,6 @@ class routerOBP(OPENBRIDGE):
                     self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
             if CONFIG['REPORTS']['REPORT']:
                self._report.send_bridgeEvent('UNIT VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
-
-        # Mark status variables for use later
-        self.STATUS[_slot]['RX_PEER']      = _peer_id
-        self.STATUS[_slot]['RX_SEQ']       = _seq
-        self.STATUS[_slot]['RX_RFS']       = _rf_src
-        self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
-        self.STATUS[_slot]['RX_TGID']      = _dst_id
-        self.STATUS[_slot]['RX_TIME']      = pkt_time
-        self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
 
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):

@@ -536,7 +536,7 @@ class routerOBP(OPENBRIDGE):
 
         
         # Final actions - Is this a voice terminator?
-        if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+        if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
             self._targets = []
             call_duration = pkt_time - self.STATUS[_slot]['RX_START']
             logger.info('(%s) *UNIT CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT %s (%s), TS %s, Duration: %.2f', \

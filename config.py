@@ -86,7 +86,7 @@ def acl_build(_acl, _max):
             if (const.ID_MIN <= start <= _max) or (const.ID_MIN <= end <= _max):
                 acl.append((start, end))
             else:
-                sys.exit('ACL CREATION ERROR, VALUE OUT OF RANGE (} - {})IN RANGE-BASED ENTRY: {}'.format(const.ID_MIN, _max, entry))
+                sys.exit('ACL CREATION ERROR, VALUE OUT OF RANGE ({} - {})IN RANGE-BASED ENTRY: {}'.format(const.ID_MIN, _max, entry))
         else:
             id = int(entry)
             if (const.ID_MIN <= id <= _max):

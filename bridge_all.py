@@ -71,24 +71,24 @@ __status__     = 'pre-alpha'
 
 
 class bridgeallSYSTEM(HBSYSTEM):
-    
+
     def __init__(self, _name, _config, _report):
         HBSYSTEM.__init__(self, _name, _config, _report)
         self._laststrid = ''
-        
+
         # Status information for the system, TS1 & TS2
         # 1 & 2 are "timeslot"
         self.STATUS = {
             1: {
                 'RX_START':     time(),
                 'RX_LOSS':      0,
-                'RX_SEQ':       '\x00',
-                'RX_RFS':       '\x00',
-                'TX_RFS':       '\x00',
-                'RX_STREAM_ID': '\x00',
-                'TX_STREAM_ID': '\x00',
-                'RX_TGID':      '\x00\x00\x00',
-                'TX_TGID':      '\x00\x00\x00',
+                'RX_SEQ':       0,
+                'RX_RFS':       b'\x00',
+                'TX_RFS':       b'\x00',
+                'RX_STREAM_ID': b'\x00',
+                'TX_STREAM_ID': b'\x00',
+                'RX_TGID':      b'\x00\x00\x00',
+                'TX_TGID':      b'\x00\x00\x00',
                 'RX_TIME':      time(),
                 'TX_TIME':      time(),
                 'RX_TYPE':      const.HBPF_SLT_VTERM,
@@ -96,13 +96,13 @@ class bridgeallSYSTEM(HBSYSTEM):
             2: {
                 'RX_START':     time(),
                 'RX:LOSS':      0,
-                'RX_SEQ':       '\x00',
-                'RX_RFS':       '\x00',
-                'TX_RFS':       '\x00',
-                'RX_STREAM_ID': '\x00',
-                'TX_STREAM_ID': '\x00',
-                'RX_TGID':      '\x00\x00\x00',
-                'TX_TGID':      '\x00\x00\x00',
+                'RX_SEQ':       0,
+                'RX_RFS':       b'\x00',
+                'TX_RFS':       b'\x00',
+                'RX_STREAM_ID': b'\x00',
+                'TX_STREAM_ID': b'\x00',
+                'RX_TGID':      b'\x00\x00\x00',
+                'TX_TGID':      b'\x00\x00\x00',
                 'RX_TIME':      time(),
                 'TX_TIME':      time(),
                 'RX_TYPE':      const.HBPF_SLT_VTERM,
@@ -115,10 +115,10 @@ class bridgeallSYSTEM(HBSYSTEM):
         _bits = _data[15]
 
         if _call_type == 'group':
-            
+
             # Is this is a new call stream?
             new_stream = (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'])
-            
+
             if new_stream:
                 self.STATUS[_slot]['RX_START'] = pkt_time
                 self.STATUS[_slot]['RX_LOSS'] = 0
@@ -130,20 +130,20 @@ class bridgeallSYSTEM(HBSYSTEM):
                 if _seq > (self.STATUS[_slot]['RX_SEQ'] + 1):
                     #print(_seq, self.STATUS[_slot]['RX_SEQ'])
                     self.STATUS[_slot]['RX_LOSS'] += _seq - (self.STATUS[_slot]['RX_SEQ'] + 1)
-            
+
             # Final actions - Is this a voice terminator?
             if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM):
                 call_duration = pkt_time - self.STATUS[_slot]['RX_START']
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Loss: %s, Duration: %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, self.STATUS[_slot]['RX_LOSS'], call_duration)
-            
-             
+
+
             for _target in self._CONFIG['SYSTEMS']: 
                 if _target != self._system:
-                    
+
                     _target_status = systems[_target].STATUS
                     _target_system = self._CONFIG['SYSTEMS'][_target]
-                    
+
                     # BEGIN STANDARD CONTENTION HANDLING
                     #
                     # The rules for each of the 4 "ifs" below are listed here for readability. The Frame To Send is:
@@ -169,8 +169,8 @@ class bridgeallSYSTEM(HBSYSTEM):
                         if _frame_type == const.HBPF_DATA_SYNC and _dtype_vseq == const.HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                             logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target, _slot, int_id(_target_status[_slot]['TX_TGID']), int_id(_target_status[_slot]['TX_RFS']))
                         continue
-                                 
-                        
+
+
                     # ACL Processing
                     if self._CONFIG['GLOBAL']['USE_ACL']:
                         if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
@@ -204,7 +204,7 @@ class bridgeallSYSTEM(HBSYSTEM):
                                 logger.info('(%s) CALL DROPPED ON EGRESS WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', _target, int_id(_stream_id), int_id(_dst_id))
                                 _target_status[_slot]['TX_STREAM_ID'] = _stream_id
                             continue
-                    
+
                     # Record this stuff for later
                     # Is this a new call stream?
                     if new_stream:
@@ -214,12 +214,12 @@ class bridgeallSYSTEM(HBSYSTEM):
                          _target_status[_slot]['TX_RFS'] = _rf_src
                          _target_status[_slot]['TX_PEER'] = _peer_id
                          _target_status[_slot]['TX_STREAM_ID'] = _stream_id
-                         
+
                     _target_status[_slot]['TX_TIME'] = pkt_time
-                    
+
                     systems[_target].send_system(_data)
                     #logger.debug('(%s) Packet routed to system: %s', self._system, _target)
-      
+
             # Mark status variables for use later
             self.STATUS[_slot]['RX_RFS']       = _rf_src
             self.STATUS[_slot]['RX_SEQ']       = _seq
@@ -227,7 +227,7 @@ class bridgeallSYSTEM(HBSYSTEM):
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
             self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
-                
+
 
 #************************************************
 #      MAIN PROGRAM LOOP STARTS HERE
@@ -239,7 +239,7 @@ if __name__ == '__main__':
     import os
     import signal
     from dmr_utils3.utils import try_download, mk_id_dict
-    
+
     # Change the current directory to the location of the application
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
 
@@ -255,21 +255,21 @@ if __name__ == '__main__':
 
     # Call the external routine to build the configuration dictionary
     CONFIG = config.build_config(cli_args.CONFIG_FILE)
-    
+
     # Start the system logger
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
     logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('Logging system started, anything from here on gets logged')
-    
+
     # Set up the signal handler
     def sig_handler(_signal, _frame):
         logger.info('SHUTDOWN: BRIDGE_ALL IS TERMINATING WITH SIGNAL %s', str(_signal))
         hblink_handler(_signal, _frame)
         logger.info('SHUTDOWN: ALL SYSTEM HANDLERS EXECUTED - STOPPING REACTOR')
         reactor.stop()
-        
+
     # Set signal handers so that we can gracefully exit if need be
     for sig in [signal.SIGTERM, signal.SIGINT]:
         signal.signal(sig, sig_handler)

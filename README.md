@@ -54,7 +54,7 @@ chown 65000  /var/log/hblink.log
 
 ***0x49 DE N0MJS***
 
-Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS n0mjs@me.com
+Copyright (C) 2016-2020 Cortney T. Buffington, N0MJS n0mjs@me.com
 
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
 

@@ -573,7 +573,7 @@ class routerHBP(HBSYSTEM):
             1: {
                 'RX_START':     time(),
                 'TX_START':     time(),
-                'RX_SEQ':       b'\x00',
+                'RX_SEQ':       0,
                 'RX_RFS':       b'\x00',
                 'TX_RFS':       b'\x00',
                 'RX_PEER':      b'\x00',
@@ -599,7 +599,7 @@ class routerHBP(HBSYSTEM):
             2: {
                 'RX_START':     time(),
                 'TX_START':     time(),
-                'RX_SEQ':       b'\x00',
+                'RX_SEQ':       0,
                 'RX_RFS':       b'\x00',
                 'TX_RFS':       b'\x00',
                 'RX_PEER':      b'\x00',

@@ -174,7 +174,6 @@ def stream_trimmer_loop():
     _now = time()
 
     for system in systems:
-        print(systems[system].STATUS)
         # HBP systems, master and peer
         if CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
             for slot in range(1,3):

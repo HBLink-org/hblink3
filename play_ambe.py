@@ -91,7 +91,7 @@ class HBP(HBSYSTEM):
         return None
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
-        if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (_stream_id != self.last_stream):
+        if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (_stream_id != self.last_stream) and (_dst_id == bytes_3(2)):
             self.last_stream = _stream_id
             
             feedback = Thread(target=self.play_voice(bytes_3(3120102), bytes_3(2), bytes_4(3120119), 0, [words['connected'], words['kansas_link']]))

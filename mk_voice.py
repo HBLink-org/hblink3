@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 ###############################################################################
-#   Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
+#   Copyright (C) 2016-2020 Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -24,6 +24,8 @@ from dmr_utils3.utils import bytes_3, bytes_4
 from dmr_utils3.const import EMB, SLOT_TYPE, BS_VOICE_SYNC, BS_DATA_SYNC, LC_OPT
 from random import randint
 from voice_lib import words
+
+LC_OPT = b'\x00\x00\x00'
 
 # Precalculated "dmrbits" (DMRD packet byte 15) -- just (slot << 7 | this value) and you're good to go!
 HEADBITS  = 0b00100001
@@ -82,10 +84,11 @@ def pkt_gen(_rf_src, _dst_id, _peer, _slot, _phrase):
             SEQ = (SEQ + 1) % 0x100
             yield pkt
 
-    # Send a single Voice Terminator Frame
-    pkt = b'DMRD' + bytes([SEQ]) + SDP + bytes([_slot << 7 | TERMBITS]) + STREAM_ID + (TERM_LC[0] + SLOT_TYPE['VOICE_LC_TERM'][:10] + BS_DATA_SYNC + SLOT_TYPE['VOICE_LC_TERM'][-10:] + TERM_LC[1]).tobytes() + TAIL
-    SEQ = (SEQ + 1) % 0x100
-    yield pkt
+    # Send 2 Voice Terminator Frames
+    for i in range(2):
+        pkt = b'DMRD' + bytes([SEQ]) + SDP + bytes([_slot << 7 | TERMBITS]) + STREAM_ID + (TERM_LC[0] + SLOT_TYPE['VOICE_LC_TERM'][:10] + BS_DATA_SYNC + SLOT_TYPE['VOICE_LC_TERM'][-10:] + TERM_LC[1]).tobytes() + TAIL
+        SEQ = (SEQ + 1) % 0x100
+        yield pkt
     
     # Return False to indicate we're done.
     return False

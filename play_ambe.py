@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 ###############################################################################
-#   Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
+#   Copyright (C) 2016-2020 Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -78,7 +78,6 @@ class HBP(HBSYSTEM):
         self.last_stream = b'\x00'
 
     def play_voice(self, _rf_src, _tgid, _peer, _slot, _speech):
-        print("starting playback")
         speech = pkt_gen(_rf_src, _tgid, _peer, _slot, _speech)
 
         sleep(1)
@@ -89,12 +88,10 @@ class HBP(HBSYSTEM):
                 break
             sleep(.058)
             self.send_system(pkt)
-            print("sent packet")
         return None
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (_stream_id != self.last_stream):
-            print(int_id(_stream_id), int_id(self.last_stream))
             self.last_stream = _stream_id
             
             feedback = Thread(target=self.play_voice(bytes_3(3120102), bytes_3(2), bytes_4(3120119), 0, [words['connected'], words['kansas_link']]))

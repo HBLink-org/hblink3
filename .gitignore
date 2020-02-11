@@ -90,6 +90,7 @@ ENV/
 
 .DS_Store
 hblink.cfg
+deconstructor.cfg
 *.config
 *.bak
 rules.py

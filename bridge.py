@@ -892,23 +892,27 @@ class routerHBP(HBSYSTEM):
             if _dst_id in UNIT_MAP:
                 if UNIT_MAP[_dst_id][0] != self._system:
                     self._targets = [UNIT_MAP[_dst_id][0]]
-                    _target_route = UNIT_MAP[_dst_id][0]
+                    #_target_route = UNIT_MAP[_dst_id][0]
                 else:
                     self._targets = []
                     logger.debug('UNIT call to a subscriber on the same system, send nothing')
             else:
                 self._targets = list(systems)
                 self._targets.remove(self._system)
-                _target_route = 'FLOOD'
+                #_target_route = 'FLOOD'
             
             # This is a new call stream, so log & report
             self.STATUS[_slot]['RX_START'] = pkt_time
             logger.info('(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT: %s (%s), TS: %s, FORWARD: %s', \
-                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _target_route)
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, self._targets)
             if CONFIG['REPORTS']['REPORT']:
                 self._report.send_bridgeEvent('UNIT VOICE,START,RX,{},{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), _target_route).encode(encoding='utf-8', errors='ignore'))
 
         for _target in self._targets:
+            if _target not in UNIT:
+                logger.debug('(%s) *UNIT CALL NOT FORWARDED* UNIT calling is disabled for this system (EGRESS)', self._system)
+                continue
+                
             _target_status = systems[_target].STATUS
             _target_system = self._CONFIG['SYSTEMS'][_target]
             
@@ -1007,7 +1011,9 @@ class routerHBP(HBSYSTEM):
         if _call_type == 'group':
             self.group_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
         elif _call_type == 'unit':
-            if UNIT:
+            if self._system not in UNIT:
+                logger.debug('(%s) *UNIT CALL NOT FORWARDED* UNIT calling is disabled for this system (INGRESS)', self._system)
+            else:
                 self.unit_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
         elif _call_type == 'vscsbk':
             logger.debug('CSBK recieved, but HBlink does not process them currently')

@@ -206,10 +206,13 @@ def stream_trimmer_loop():
                 if stream_id in systems[system].STATUS:
                     _stream = systems[system].STATUS[stream_id]
                     _sysconfig = CONFIG['SYSTEMS'][system]
-                    logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
-                        system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_sysconfig['NETWORK_ID']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
+                    logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TYPE: %s DST ID: %s TS 1 Duration: %.2f', \
+                        system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_sysconfig['NETWORK_ID']), peer_ids), _stream['TYPE'], get_alias(int_id(_stream['DST']), talkgroup_ids), _stream['LAST'] - _stream['START'])
                     if CONFIG['REPORTS']['REPORT']:
-                            systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_stream['RFS']), 1, int_id(_stream['TGID']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
+                            if _stream['TYPE'] == 'GROUP':
+                                systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_stream['RFS']), 1, int_id(_stream['DST']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
+                            elif _stream['TYPE'] == 'UNIT':
+                                systems[system]._report.send_bridgeEvent('UNIT VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_stream['RFS']), 1, int_id(_stream['DST']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
                     removed = systems[system].STATUS.pop(stream_id)
                 else:
                     logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
@@ -236,7 +239,8 @@ class routerOBP(OPENBRIDGE):
                 'START':     pkt_time,
                 'CONTENTION':False,
                 'RFS':       _rf_src,
-                'TGID':      _dst_id,
+                'TYPE':      'GROUP',
+                'TGID':      _dst_id
             }
 
             # If we can, use the LC from the voice header as to keep all options intact
@@ -275,7 +279,8 @@ class routerOBP(OPENBRIDGE):
                                         'START':     pkt_time,
                                         'CONTENTION':False,
                                         'RFS':       _rf_src,
-                                        'TGID':      _dst_id,
+                                        'TYPE':      'GROUP'
+                                        'DST':       _dst_id,
                                     }
                                     # Generate LCs (full and EMB) for the TX stream
                                     dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
@@ -433,7 +438,8 @@ class routerOBP(OPENBRIDGE):
                 'START':     pkt_time,
                 'CONTENTION':False,
                 'RFS':       _rf_src,
-                'TGID':      _dst_id,
+                'TYPE':      'UNIT',
+                'TGID':      _dst_id
             }
                 
             # Create a destination list for the call:
@@ -467,7 +473,8 @@ class routerOBP(OPENBRIDGE):
                         'START':     pkt_time,
                         'CONTENTION':False,
                         'RFS':       _rf_src,
-                        'TGID':      _dst_id,
+                        'TYPE':      'UNIT'
+                        'DST':      _dst_id,
                     }
 
                     logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, TGID: %s', self._system, _target, _slot, int_id(_dst_id))
@@ -493,6 +500,7 @@ class routerOBP(OPENBRIDGE):
                 #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
                 # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
                 #
+                '''
                 if ((_dst_id != _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
                     if self.STATUS[_stream_id]['CONTENTION'] == False:
                         self.STATUS[_stream_id]['CONTENTION'] = True
@@ -503,6 +511,7 @@ class routerOBP(OPENBRIDGE):
                         self.STATUS[_stream_id]['CONTENTION'] = True
                         logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['TX_TGID']))
                     continue
+                '''
                 if (_dst_id == _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < STREAM_TO):
                     if self.STATUS[_stream_id]['CONTENTION'] == False:
                         self.STATUS[_stream_id]['CONTENTION'] = True
@@ -676,7 +685,8 @@ class routerHBP(HBSYSTEM):
                                             'START':     pkt_time,
                                             'CONTENTION':False,
                                             'RFS':       _rf_src,
-                                            'TGID':      _dst_id,
+                                            'TYPE':     'GROUP',
+                                            'DST':      _dst_id,
                                         }
                                         # Generate LCs (full and EMB) for the TX stream
                                         dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
@@ -892,14 +902,12 @@ class routerHBP(HBSYSTEM):
             if _dst_id in UNIT_MAP:
                 if UNIT_MAP[_dst_id][0] != self._system:
                     self._targets = [UNIT_MAP[_dst_id][0]]
-                    #_target_route = UNIT_MAP[_dst_id][0]
                 else:
                     self._targets = []
-                    logger.debug('UNIT call to a subscriber on the same system, send nothing')
+                    logger.error('UNIT call to a subscriber on the same system, send nothing')
             else:
-                self._targets = list(systems)
+                self._targets = list(UNIT)
                 self._targets.remove(self._system)
-                #_target_route = 'FLOOD'
             
             # This is a new call stream, so log & report
             self.STATUS[_slot]['RX_START'] = pkt_time
@@ -909,9 +917,6 @@ class routerHBP(HBSYSTEM):
                 self._report.send_bridgeEvent('UNIT VOICE,START,RX,{},{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), _target_route).encode(encoding='utf-8', errors='ignore'))
 
         for _target in self._targets:
-            if _target not in UNIT:
-                logger.debug('(%s) *UNIT CALL NOT FORWARDED* UNIT calling is disabled for this system (EGRESS)', self._system)
-                continue
                 
             _target_status = systems[_target].STATUS
             _target_system = self._CONFIG['SYSTEMS'][_target]
@@ -923,10 +928,11 @@ class routerHBP(HBSYSTEM):
                         'START':     pkt_time,
                         'CONTENTION':False,
                         'RFS':       _rf_src,
-                        'TGID':      _dst_id,
+                        'TYPE':      'UNIT',
+                        'DST':      _dst_id
                     }
 
-                    logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, TGID: %s', self._system, _target, _slot, int_id(_dst_id))
+                    logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, UNIT: %s', self._system, _target, _slot, int_id(_dst_id))
                     if CONFIG['REPORTS']['REPORT']:
                         systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
@@ -987,7 +993,12 @@ class routerHBP(HBSYSTEM):
 
             #send the call:
             systems[_target].send_system(_data)
-
+            
+            if self._CONFIG['SYSTEMS'][_target]['MODE'] == 'OPENBRIDGE':
+                if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+                    if (_stream_id in _target_status):
+                        _target_status.pop(_stream_id)
+                        
         
         # Final actions - Is this a voice terminator?
         if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
@@ -1008,13 +1019,12 @@ class routerHBP(HBSYSTEM):
         self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
 
 
-
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         if _call_type == 'group':
             self.group_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
         elif _call_type == 'unit':
             if self._system not in UNIT:
-                logger.debug('(%s) *UNIT CALL NOT FORWARDED* UNIT calling is disabled for this system (INGRESS)', self._system)
+                logger.error('(%s) *UNIT CALL NOT FORWARDED* UNIT calling is disabled for this system (INGRESS)', self._system)
             else:
                 self.unit_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
         elif _call_type == 'vscsbk':

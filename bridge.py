@@ -240,7 +240,7 @@ class routerOBP(OPENBRIDGE):
                 'CONTENTION':False,
                 'RFS':       _rf_src,
                 'TYPE':      'GROUP',
-                'TGID':      _dst_id
+                'DST':       _dst_id
             }
 
             # If we can, use the LC from the voice header as to keep all options intact
@@ -279,8 +279,8 @@ class routerOBP(OPENBRIDGE):
                                         'START':     pkt_time,
                                         'CONTENTION':False,
                                         'RFS':       _rf_src,
-                                        'TYPE':      'GROUP'
-                                        'DST':       _dst_id,
+                                        'TYPE':      'GROUP',
+                                        'DST':       _dst_id
                                     }
                                     # Generate LCs (full and EMB) for the TX stream
                                     dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
@@ -439,7 +439,7 @@ class routerOBP(OPENBRIDGE):
                 'CONTENTION':False,
                 'RFS':       _rf_src,
                 'TYPE':      'UNIT',
-                'TGID':      _dst_id
+                'DST':       _dst_id
             }
                 
             # Create a destination list for the call:
@@ -473,8 +473,8 @@ class routerOBP(OPENBRIDGE):
                         'START':     pkt_time,
                         'CONTENTION':False,
                         'RFS':       _rf_src,
-                        'TYPE':      'UNIT'
-                        'DST':      _dst_id,
+                        'TYPE':      'UNIT',
+                        'DST':      _dst_id
                     }
 
                     logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, TGID: %s', self._system, _target, _slot, int_id(_dst_id))
@@ -686,7 +686,7 @@ class routerHBP(HBSYSTEM):
                                             'CONTENTION':False,
                                             'RFS':       _rf_src,
                                             'TYPE':     'GROUP',
-                                            'DST':      _dst_id,
+                                            'DST':      _dst_id
                                         }
                                         # Generate LCs (full and EMB) for the TX stream
                                         dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])

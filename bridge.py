@@ -206,6 +206,7 @@ def stream_trimmer_loop():
                 if stream_id in systems[system].STATUS:
                     _stream = systems[system].STATUS[stream_id]
                     _sysconfig = CONFIG['SYSTEMS'][system]
+                    if systems[system].STATUS[stream_id]['ACTIVE']:
                     logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TYPE: %s DST ID: %s TS 1 Duration: %.2f', \
                         system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_sysconfig['NETWORK_ID']), peer_ids), _stream['TYPE'], get_alias(int_id(_stream['DST']), talkgroup_ids), _stream['LAST'] - _stream['START'])
                     if CONFIG['REPORTS']['REPORT']:
@@ -240,7 +241,8 @@ class routerOBP(OPENBRIDGE):
                 'CONTENTION':False,
                 'RFS':       _rf_src,
                 'TYPE':      'GROUP',
-                'DST':       _dst_id
+                'DST':       _dst_id,
+                'ACTIVE':    True
             }
 
             # If we can, use the LC from the voice header as to keep all options intact
@@ -280,7 +282,8 @@ class routerOBP(OPENBRIDGE):
                                         'CONTENTION':False,
                                         'RFS':       _rf_src,
                                         'TYPE':      'GROUP',
-                                        'DST':       _dst_id
+                                        'DST':       _dst_id,
+                                        'ACTIVE':    True
                                     }
                                     # Generate LCs (full and EMB) for the TX stream
                                     dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
@@ -313,7 +316,8 @@ class routerOBP(OPENBRIDGE):
                                     dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
                                     if CONFIG['REPORTS']['REPORT']:
                                         call_duration = pkt_time - _target_status[_stream_id]['START']
-                                        systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
+                                        _target_status[_stream_id]['ACTIVE']: False
+                                        systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))              
                                 # Create a Burst B-E packet (Embedded LC)
                                 elif _dtype_vseq in [1,2,3,4]:
                                     dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
@@ -407,7 +411,6 @@ class routerOBP(OPENBRIDGE):
                             #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
 
 
-
         # Final actions - Is this a voice terminator?
         if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
             call_duration = pkt_time - self.STATUS[_stream_id]['START']
@@ -415,10 +418,8 @@ class routerOBP(OPENBRIDGE):
                     self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
             if CONFIG['REPORTS']['REPORT']:
                self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
-            removed = self.STATUS.pop(_stream_id)
+            _target_status[_stream_id]['ACTIVE']: False
             logger.debug('(%s) OpenBridge sourced call stream end, remove terminated Stream ID: %s', self._system, int_id(_stream_id))
-            if not removed:
-                selflogger.error('(%s) *GROUP CALL END*   STREAM ID: %s NOT IN LIST -- THIS IS A REAL PROBLEM', self._system, int_id(_stream_id))
 
 
     def unit_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
@@ -439,7 +440,8 @@ class routerOBP(OPENBRIDGE):
                 'CONTENTION':False,
                 'RFS':       _rf_src,
                 'TYPE':      'UNIT',
-                'DST':       _dst_id
+                'DST':       _dst_id,
+                'ACTIVE':    True
             }
                 
             # Create a destination list for the call:
@@ -474,7 +476,8 @@ class routerOBP(OPENBRIDGE):
                         'CONTENTION':False,
                         'RFS':       _rf_src,
                         'TYPE':      'UNIT',
-                        'DST':      _dst_id
+                        'DST':      _dst_id,
+                        'ACTIVE':   True
                     }
 
                     logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, TGID: %s', self._system, _target, _slot, int_id(_dst_id))
@@ -489,6 +492,9 @@ class routerOBP(OPENBRIDGE):
                 # Assemble transmit HBP packet
                 _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
                 _data = b''.join([_tmp_data, dmrpkt])
+                
+                if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
+                    _target_status[_stream_id]['ACTIVE']: False
 
             else:
                 # BEGIN STANDARD CONTENTION HANDLING
@@ -542,6 +548,11 @@ class routerOBP(OPENBRIDGE):
 
             #send the call:
             systems[_target].send_system(_data)
+            
+            if _target_system['MODE'] == 'OPENBRIDGE':
+                if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
+                    if (_stream_id in _target_status):
+                        _target_status.pop(_stream_id)
 
         
         # Final actions - Is this a voice terminator?
@@ -686,7 +697,8 @@ class routerHBP(HBSYSTEM):
                                             'CONTENTION':False,
                                             'RFS':       _rf_src,
                                             'TYPE':     'GROUP',
-                                            'DST':      _dst_id
+                                            'DST':      _dst_id,
+                                            'ACTIVE':   True,
                                         }
                                         # Generate LCs (full and EMB) for the TX stream
                                         dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
@@ -719,6 +731,7 @@ class routerHBP(HBSYSTEM):
                                         dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
                                         if CONFIG['REPORTS']['REPORT']:
                                             call_duration = pkt_time - _target_status[_stream_id]['START']
+                                            _target_status[_stream_id]['ACTIVE']: False
                                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                                     # Create a Burst B-E packet (Embedded LC)
                                     elif _dtype_vseq in [1,2,3,4]:
@@ -804,7 +817,11 @@ class routerHBP(HBSYSTEM):
                                 # Transmit the packet to the destination system
                                 systems[_target['SYSTEM']].send_system(_tmp_data)
                                 #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-
+                                
+                                if _target_system['MODE'] == 'OPENBRIDGE':
+                                    if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+                                        if (_stream_id in _target_status):
+                                            _target_status.pop(_stream_id)
 
 
         # Final actions - Is this a voice terminator?
@@ -929,7 +946,8 @@ class routerHBP(HBSYSTEM):
                         'CONTENTION':False,
                         'RFS':       _rf_src,
                         'TYPE':      'UNIT',
-                        'DST':      _dst_id
+                        'DST':      _dst_id,
+                        'ACTIVE':   True
                     }
 
                     logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, UNIT: %s', self._system, _target, _slot, int_id(_dst_id))
@@ -944,6 +962,9 @@ class routerHBP(HBSYSTEM):
                 # Assemble transmit HBP packet
                 _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
                 _data = b''.join([_tmp_data, dmrpkt])
+                
+                if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
+                    _target_status[_stream_id]['ACTIVE']: False
 
             else:
                 # BEGIN STANDARD CONTENTION HANDLING
@@ -993,11 +1014,6 @@ class routerHBP(HBSYSTEM):
 
             #send the call:
             systems[_target].send_system(_data)
-            
-            if self._CONFIG['SYSTEMS'][_target]['MODE'] == 'OPENBRIDGE':
-                if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
-                    if (_stream_id in _target_status):
-                        _target_status.pop(_stream_id)
                         
         
         # Final actions - Is this a voice terminator?

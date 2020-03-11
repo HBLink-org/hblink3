@@ -5,6 +5,8 @@ Please join the DVSwitch group at groups.io for online forum support, discussion
 
 DVSwitch@groups.io 
 
+A voluntary registrty for HBlink systems with public access has been created here: http://hblink-register.com.es Please consider listing your system if you allow open access.
+
 ---
 
 ## PROJECT: Open Source HomeBrew Repeater Proctol Client/Master. ##

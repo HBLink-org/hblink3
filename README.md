@@ -5,7 +5,7 @@ Please join the DVSwitch group at groups.io for online forum support, discussion
 
 DVSwitch@groups.io 
 
-A voluntary registrty for HBlink systems with public access has been created at hblink-register.com.es Please consider listing your system if you allow open access.
+A voluntary registrty for HBlink systems with public access has been created at https://hblink-register.com.es Please consider listing your system if you allow open access.
 
 ---
 

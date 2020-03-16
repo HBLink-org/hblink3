@@ -316,7 +316,7 @@ class routerOBP(OPENBRIDGE):
                                     dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
                                     if CONFIG['REPORTS']['REPORT']:
                                         call_duration = pkt_time - _target_status[_stream_id]['START']
-                                        _target_status[_stream_id]['ACTIVE']: False
+                                        _target_status[_stream_id]['ACTIVE'] = False
                                         systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))              
                                 # Create a Burst B-E packet (Embedded LC)
                                 elif _dtype_vseq in [1,2,3,4]:

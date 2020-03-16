@@ -48,8 +48,7 @@ BRIDGES = {
 }
 
 '''
-list the names of each system that should process unit to unit (individual) calls. Processing
-is both ingress and egress.
+list the names of each system that should bridge unit to unit (individual) calls.
 '''
 
 UNIT = ['ONE', 'TWO']

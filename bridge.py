@@ -457,11 +457,13 @@ class routerOBP(OPENBRIDGE):
             
             
             # This is a new call stream, so log & report
-            self.STATUS['START'] = pkt_time
             logger.info('(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT: %s (%s), TS: %s, FORWARD: %s', \
                     self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, self._targets)
             if CONFIG['REPORTS']['REPORT']:
                 self._report.send_bridgeEvent('UNIT VOICE,START,RX,{},{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), self._targets).encode(encoding='utf-8', errors='ignore'))
+
+        # Record the time of this packet so we can later identify a stale stream
+        self.STATUS[_stream_id]['LAST'] = pkt_time
 
         for _target in self._targets:
             _target_status = systems[_target].STATUS
@@ -486,12 +488,14 @@ class routerOBP(OPENBRIDGE):
                 # Record the time of this packet so we can later identify a stale stream
                 _target_status[_stream_id]['LAST'] = pkt_time
                 # Clear the TS bit and follow propper OBP definition, unless "BOTH_SLOTS" is set. This only works for unit calls.
-                if not _target_system['BOTH_SLOTS']:
+                if _target_system['BOTH_SLOTS']:
+                    _tmp_bits = _bits
+                else:
                     _tmp_bits = _bits & ~(1 << 7)
 
-                    # Assemble transmit HBP packet
-                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-                    _data = b''.join([_tmp_data, dmrpkt])
+                # Assemble transmit HBP packet
+                _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                _data = b''.join([_tmp_data, dmrpkt])
                 
                 if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
                     _target_status[_stream_id]['ACTIVE'] = False
@@ -558,7 +562,7 @@ class routerOBP(OPENBRIDGE):
         # Final actions - Is this a voice terminator?
         if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
             self._targets = []
-            call_duration = pkt_time - self.STATUS['START']
+            call_duration = pkt_time - self.STATUS[_stream_id]['START']
             logger.info('(%s) *UNIT CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT %s (%s), TS %s, Duration: %.2f', \
                     self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
             if CONFIG['REPORTS']['REPORT']:
@@ -957,12 +961,14 @@ class routerHBP(HBSYSTEM):
                 # Record the time of this packet so we can later identify a stale stream
                 _target_status[_stream_id]['LAST'] = pkt_time
                 # Clear the TS bit and follow propper OBP definition, unless "BOTH_SLOTS" is set. This only works for unit calls.
-                if not _target_system['BOTH_SLOTS']:
+                if _target_system['BOTH_SLOTS']:
+                    _tmp_bits = _bits
+                else:
                     _tmp_bits = _bits & ~(1 << 7)
 
-                    # Assemble transmit HBP packet
-                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-                    _data = b''.join([_tmp_data, dmrpkt])
+                # Assemble transmit HBP packet
+                _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                _data = b''.join([_tmp_data, dmrpkt])
                 
                 if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
                     _target_status[_stream_id]['ACTIVE'] = False

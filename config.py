@@ -228,6 +228,7 @@ def build_config(_config_file):
                         'TARGET_SOCK': (gethostbyname(config.get(section, 'TARGET_IP')), config.getint(section, 'TARGET_PORT')),
                         'TARGET_IP': gethostbyname(config.get(section, 'TARGET_IP')),
                         'TARGET_PORT': config.getint(section, 'TARGET_PORT'),
+                        'BOTH_SLOTS': config.getboolean(section, 'BOTH_SLOTS'),
                         'USE_ACL': config.getboolean(section, 'USE_ACL'),
                         'SUB_ACL': config.get(section, 'SUB_ACL'),
                         'TG1_ACL': config.get(section, 'TGID_ACL'),

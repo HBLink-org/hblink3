@@ -160,8 +160,8 @@ class OPENBRIDGE(DatagramProtocol):
                 _stream_id = _data[16:20]
                 #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
 
-                # Sanity check for OpenBridge -- all calls must be on Slot 1
-                if _slot != 1:
+                # Sanity check for OpenBridge -- all calls must be on Slot 1 for Brandmeister or DMR+. Other HBlinks can process timeslot on OPB if the flag is set
+                if _slot != 1 and not self._config['BOTH_SLOTS'] and not _call_type == 'unit':
                     logger.error('(%s) OpenBridge packet discarded because it was not received on slot 1. SID: %s, TGID %s', self._system, int_id(_rf_src), int_id(_dst_id))
                     return
 
@@ -218,13 +218,6 @@ class HBSYSTEM(DatagramProtocol):
 
         elif self._config['MODE'] == 'PEER':
             self._stats = self._config['STATS']
-            self.send_system = self.send_master
-            self.maintenance_loop = self.peer_maintenance_loop
-            self.datagramReceived = self.peer_datagramReceived
-            self.dereg = self.peer_dereg
-
-        elif self._config['MODE'] == 'XLXPEER':
-            self._stats = self._config['XLXSTATS']
             self.send_system = self.send_master
             self.maintenance_loop = self.peer_maintenance_loop
             self.datagramReceived = self.peer_datagramReceived
@@ -288,29 +281,6 @@ class HBSYSTEM(DatagramProtocol):
         self.transport.write(_packet, self._config['MASTER_SOCKADDR'])
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         # logger.debug('(%s) TX Packet to %s:%s -- %s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'], ahex(_packet))
-
-    def send_xlxmaster(self, radio, xlx, mastersock):
-        radio3 = int.from_bytes(radio, 'big').to_bytes(3, 'big')
-        radio4 = int.from_bytes(radio, 'big').to_bytes(4, 'big')
-        xlx3   = xlx.to_bytes(3, 'big')
-        streamid = randint(0,255).to_bytes(1, 'big')+randint(0,255).to_bytes(1, 'big')+randint(0,255).to_bytes(1, 'big')+randint(0,255).to_bytes(1, 'big')
-        # Wait for .5 secs for the XLX to log us in
-        for packetnr in range(5):
-            if packetnr < 3:
-                # First 3 packets, voice start, stream type e1
-                strmtype = 225
-                payload = bytearray.fromhex('4f2e00b501ae3a001c40a0c1cc7dff57d75df5d5065026f82880bd616f13f185890000')
-            else:
-                # Last 2 packets, voice end, stream type e2
-                strmtype = 226
-                payload = bytearray.fromhex('4f410061011e3a781c30a061ccbdff57d75df5d2534425c02fe0b1216713e885ba0000')
-            packetnr1 = packetnr.to_bytes(1, 'big')
-            strmtype1 = strmtype.to_bytes(1, 'big')
-            _packet = b''.join([DMRD, packetnr1, radio3, xlx3, radio4, strmtype1, streamid, payload])
-            self.transport.write(_packet, mastersock)
-            # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-            #logger.debug('(%s) XLX Module Change Packet: %s', self._system, ahex(_packet))
-        return
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pass
@@ -656,11 +626,7 @@ class HBSYSTEM(DatagramProtocol):
                             self._stats['CONNECTION'] = 'YES'
                             self._stats['CONNECTED'] = time()
                             logger.info('(%s) Connection to Master Completed', self._system)
-                            # If we are an XLX, send the XLX module request here.
-                            if self._config['MODE'] == 'XLXPEER':
-                                self.send_xlxmaster(self._config['RADIO_ID'], int(4000), self._config['MASTER_SOCKADDR'])
-                                self.send_xlxmaster(self._config['RADIO_ID'], self._config['XLXMODULE'], self._config['MASTER_SOCKADDR'])
-                                logger.info('(%s) Sending XLX Module request', self._system)
+                            
                     else:
                         self._stats['CONNECTION'] = 'NO'
                         logger.error('(%s) Master ACK Contained wrong ID - Connection Reset', self._system)
@@ -797,7 +763,7 @@ if __name__ == '__main__':
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
-    logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
+    logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018, 2019, 2020\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
     # Set up the signal handler

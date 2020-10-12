@@ -67,6 +67,13 @@ __email__      = 'n0mjs@me.com'
 
 # Module gobal varaibles
 
+# Dictionary for dynamically mapping unit (subscriber) to a system.
+# This is for pruning unit-to-uint calls to not broadcast once the
+# target system for a unit is identified
+# format 'unit_id': ('SYSTEM', time)
+UNIT_MAP = {} 
+
+
 # Timed loop used for reporting HBP status
 #
 # REPORT BASED ON THE TYPE SELECTED IN THE MAIN CONFIG FILE
@@ -116,6 +123,7 @@ def make_bridges(_rules):
 
 # Run this every minute for rule timer updates
 def rule_timer_loop():
+    global UNIT_MAP
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
     _now = time()
 
@@ -143,6 +151,18 @@ def rule_timer_loop():
                     logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             else:
                 logger.debug('(ROUTER) Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+
+    _then = _now - 60
+    remove_list = []
+    for unit in UNIT_MAP:
+        if UNIT_MAP[unit][1] < (_then):
+            remove_list.append(unit)
+
+    for unit in remove_list:
+        del UNIT_MAP[unit]
+
+    logger.debug('Removed unit(s) %s from UNIT_MAP', remove_list)
+
 
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
@@ -186,10 +206,14 @@ def stream_trimmer_loop():
                 if stream_id in systems[system].STATUS:
                     _stream = systems[system].STATUS[stream_id]
                     _sysconfig = CONFIG['SYSTEMS'][system]
-                    logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
-                        system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_sysconfig['NETWORK_ID']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
+                    if systems[system].STATUS[stream_id]['ACTIVE']:
+                        logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TYPE: %s DST ID: %s TS 1 Duration: %.2f', \
+                        system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_sysconfig['NETWORK_ID']), peer_ids), _stream['TYPE'], get_alias(int_id(_stream['DST']), talkgroup_ids), _stream['LAST'] - _stream['START'])
                     if CONFIG['REPORTS']['REPORT']:
-                            systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_stream['RFS']), 1, int_id(_stream['TGID']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
+                            if _stream['TYPE'] == 'GROUP':
+                                systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_stream['RFS']), 1, int_id(_stream['DST']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
+                            elif _stream['TYPE'] == 'UNIT':
+                                systems[system]._report.send_bridgeEvent('UNIT VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_stream['RFS']), 1, int_id(_stream['DST']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
                     removed = systems[system].STATUS.pop(stream_id)
                 else:
                     logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
@@ -198,205 +222,373 @@ class routerOBP(OPENBRIDGE):
 
     def __init__(self, _name, _config, _report):
         OPENBRIDGE.__init__(self, _name, _config, _report)
+        self.name = _name
         self.STATUS = {}
+        
+        # list of self._targets for unit (subscriber, private) calls
+        self._targets = []
 
-
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
+    def group_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
+        
+        # Is this a new call stream?
+        if (_stream_id not in self.STATUS):
+            # This is a new call stream
+            self.STATUS[_stream_id] = {
+                'START':     pkt_time,
+                'CONTENTION':False,
+                'RFS':       _rf_src,
+                'TYPE':      'GROUP',
+                'DST':       _dst_id,
+                'ACTIVE':    True
+            }
+
+            # If we can, use the LC from the voice header as to keep all options intact
+            if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                decoded = decode.voice_head_term(dmrpkt)
+                self.STATUS[_stream_id]['LC'] = decoded['LC']
+
+            # If we don't have a voice header then don't wait to decode the Embedded LC
+            # just make a new one from the HBP header. This is good enough, and it saves lots of time
+            else:
+                self.STATUS[_stream_id]['LC'] = LC_OPT + _dst_id + _rf_src
+
+
+            logger.info('(%s) *GROUP CALL START* OBP STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            if CONFIG['REPORTS']['REPORT']:
+                self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+
+        self.STATUS[_stream_id]['LAST'] = pkt_time
+
+
+        for _bridge in BRIDGES:
+            for _system in BRIDGES[_bridge]:
+
+                if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
+
+                    for _target in BRIDGES[_bridge]:
+                        if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
+                            _target_status = systems[_target['SYSTEM']].STATUS
+                            _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+                            if _target_system['MODE'] == 'OPENBRIDGE':
+                                # Is this a new call stream on the target?
+                                if (_stream_id not in _target_status):
+                                    # This is a new call stream on the target
+                                    _target_status[_stream_id] = {
+                                        'START':     pkt_time,
+                                        'CONTENTION':False,
+                                        'RFS':       _rf_src,
+                                        'TYPE':      'GROUP',
+                                        'DST':       _dst_id,
+                                        'ACTIVE':    True
+                                    }
+                                    # Generate LCs (full and EMB) for the TX stream
+                                    dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
+                                    _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(dst_lc)
+                                    _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(dst_lc)
+                                    _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(dst_lc)
+
+                                    logger.info('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                                    if CONFIG['REPORTS']['REPORT']:
+                                        systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+
+                                # Record the time of this packet so we can later identify a stale stream
+                                _target_status[_stream_id]['LAST'] = pkt_time
+                                # Clear the TS bit -- all OpenBridge streams are effectively on TS1
+                                _tmp_bits = _bits & ~(1 << 7)
+
+                                # Assemble transmit HBP packet header
+                                _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+
+                                # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
+                                # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
+                                # if _dst_id != rule['DST_GROUP']:
+                                dmrbits = bitarray(endian='big')
+                                dmrbits.frombytes(dmrpkt)
+                                # Create a voice header packet (FULL LC)
+                                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                                    dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
+                                # Create a voice terminator packet (FULL LC)
+                                elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                                    dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
+                                    if CONFIG['REPORTS']['REPORT']:
+                                        call_duration = pkt_time - _target_status[_stream_id]['START']
+                                        _target_status[_stream_id]['ACTIVE'] = False
+                                        systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))              
+                                # Create a Burst B-E packet (Embedded LC)
+                                elif _dtype_vseq in [1,2,3,4]:
+                                    dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                                dmrpkt = dmrbits.tobytes()
+                                _tmp_data = b''.join([_tmp_data, dmrpkt])
+
+                            else:
+                                # BEGIN CONTENTION HANDLING
+                                #
+                                # The rules for each of the 4 "ifs" below are listed here for readability. The Frame To Send is:
+                                #   From a different group than last RX from this HBSystem, but it has been less than Group Hangtime
+                                #   From a different group than last TX to this HBSystem, but it has been less than Group Hangtime
+                                #   From the same group as the last RX from this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                                #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                                # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
+                                #
+                                if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                                    if self.STATUS[_stream_id]['CONTENTION'] == False:
+                                        self.STATUS[_stream_id]['CONTENTION'] = True
+                                        logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
+                                    continue
+                                if ((_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                                    if self.STATUS[_stream_id]['CONTENTION'] == False:
+                                        self.STATUS[_stream_id]['CONTENTION'] = True
+                                        logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
+                                    continue
+                                if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
+                                    if self.STATUS[_stream_id]['CONTENTION'] == False:
+                                        self.STATUS[_stream_id]['CONTENTION'] = True
+                                        logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
+                                    continue
+                                if (_target['TGID'] == _target_status[_target['TS']]['TX_TGID']) and (_rf_src != _target_status[_target['TS']]['TX_RFS']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO):
+                                    if self.STATUS[_stream_id]['CONTENTION'] == False:
+                                        self.STATUS[_stream_id]['CONTENTION'] = True
+                                        logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
+                                    continue
+
+                                # Is this a new call stream?
+                                if (_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id):
+                                    # Record the DST TGID and Stream ID
+                                    _target_status[_target['TS']]['TX_START'] = pkt_time
+                                    _target_status[_target['TS']]['TX_TGID'] = _target['TGID']
+                                    _target_status[_target['TS']]['TX_STREAM_ID'] = _stream_id
+                                    _target_status[_target['TS']]['TX_RFS'] = _rf_src
+                                    _target_status[_target['TS']]['TX_PEER'] = _peer_id
+                                    # Generate LCs (full and EMB) for the TX stream
+                                    dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
+                                    _target_status[_target['TS']]['TX_H_LC'] = bptc.encode_header_lc(dst_lc)
+                                    _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
+                                    _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
+                                    logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                                    logger.info('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                                    if CONFIG['REPORTS']['REPORT']:
+                                       systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+
+                                # Set other values for the contention handler to test next time there is a frame to forward
+                                _target_status[_target['TS']]['TX_TIME'] = pkt_time
+                                _target_status[_target['TS']]['TX_TYPE'] = _dtype_vseq
+
+                                # Handle any necessary re-writes for the destination
+                                if _system['TS'] != _target['TS']:
+                                    _tmp_bits = _bits ^ 1 << 7
+                                else:
+                                    _tmp_bits = _bits
+
+                                # Assemble transmit HBP packet header
+                                _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+
+                                # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
+                                # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
+                                # if _dst_id != rule['DST_GROUP']:
+                                dmrbits = bitarray(endian='big')
+                                dmrbits.frombytes(dmrpkt)
+                                # Create a voice header packet (FULL LC)
+                                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                                    dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
+                                # Create a voice terminator packet (FULL LC)
+                                elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                                    dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
+                                    if CONFIG['REPORTS']['REPORT']:
+                                        call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
+                                        systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
+                                # Create a Burst B-E packet (Embedded LC)
+                                elif _dtype_vseq in [1,2,3,4]:
+                                    dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                                dmrpkt = dmrbits.tobytes()
+                                _tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
+
+                            # Transmit the packet to the destination system
+                            systems[_target['SYSTEM']].send_system(_tmp_data)
+                            #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+
+
+        # Final actions - Is this a voice terminator?
+        if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
+            call_duration = pkt_time - self.STATUS[_stream_id]['START']
+            logger.info('(%s) *GROUP CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f', \
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
+            if CONFIG['REPORTS']['REPORT']:
+               self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
+            self.STATUS[_stream_id]['ACTIVE'] = False
+            logger.debug('(%s) OpenBridge sourced call stream end, remove terminated Stream ID: %s', self._system, int_id(_stream_id))
+
+
+    def unit_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
+        global UNIT_MAP
+        pkt_time = time()
+        dmrpkt = _data[20:53]
+        _bits = _data[15]
+ 
+        # Make/update this unit in the UNIT_MAP cache
+        UNIT_MAP[_rf_src] = (self.name, pkt_time)
+        
+        
+        # Is this a new call stream?
+        if (_stream_id not in self.STATUS):
+            # This is a new call stream
+            self.STATUS[_stream_id] = {
+                'START':     pkt_time,
+                'CONTENTION':False,
+                'RFS':       _rf_src,
+                'TYPE':      'UNIT',
+                'DST':       _dst_id,
+                'ACTIVE':    True
+            }
+                
+            # Create a destination list for the call:                
+            if _dst_id in UNIT_MAP:
+                if UNIT_MAP[_dst_id][0] != self._system:
+                    self._targets = [UNIT_MAP[_dst_id][0]]
+                else:
+                    self._targets = []
+                    logger.error('UNIT call to a subscriber on the same system, send nothing')
+            else:
+                self._targets = list(UNIT)
+                self._targets.remove(self._system)
+            
+            
+            # This is a new call stream, so log & report
+            logger.info('(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT: %s (%s), TS: %s, FORWARD: %s', \
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, self._targets)
+            if CONFIG['REPORTS']['REPORT']:
+                self._report.send_bridgeEvent('UNIT VOICE,START,RX,{},{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), self._targets).encode(encoding='utf-8', errors='ignore'))
+
+        # Record the time of this packet so we can later identify a stale stream
+        self.STATUS[_stream_id]['LAST'] = pkt_time
+
+        for _target in self._targets:
+            _target_status = systems[_target].STATUS
+            _target_system = self._CONFIG['SYSTEMS'][_target]
+            
+            if self._CONFIG['SYSTEMS'][_target]['MODE'] == 'OPENBRIDGE':
+                if (_stream_id not in _target_status):
+                    # This is a new call stream on the target
+                    _target_status[_stream_id] = {
+                        'START':     pkt_time,
+                        'CONTENTION':False,
+                        'RFS':       _rf_src,
+                        'TYPE':      'UNIT',
+                        'DST':      _dst_id,
+                        'ACTIVE':   True
+                    }
+
+                    logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, TGID: %s', self._system, _target, _slot if _target_system['BOTH_SLOTS'] else 1, int_id(_dst_id))
+                    if CONFIG['REPORTS']['REPORT']:
+                        systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+
+                # Record the time of this packet so we can later identify a stale stream
+                _target_status[_stream_id]['LAST'] = pkt_time
+                # Clear the TS bit and follow propper OBP definition, unless "BOTH_SLOTS" is set. This only works for unit calls.
+                if _target_system['BOTH_SLOTS']:
+                    _tmp_bits = _bits
+                else:
+                    _tmp_bits = _bits & ~(1 << 7)
+
+                # Assemble transmit HBP packet
+                _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                _data = b''.join([_tmp_data, dmrpkt])
+                
+                if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
+                    _target_status[_stream_id]['ACTIVE'] = False
+
+            else:
+                # BEGIN STANDARD CONTENTION HANDLING
+                #
+                # The rules for each of the 4 "ifs" below are listed here for readability. The Frame To Send is:
+                #   From a different group than last RX from this HBSystem, but it has been less than Group Hangtime
+                #   From a different group than last TX to this HBSystem, but it has been less than Group Hangtime
+                #   From the same group as the last RX from this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
+                #
+                '''
+                if ((_dst_id != _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                    if self.STATUS[_stream_id]['CONTENTION'] == False:
+                        self.STATUS[_stream_id]['CONTENTION'] = True
+                        logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['RX_TGID']))
+                    continue
+                if ((_dst_id != _target_status[_slot]['TX_TGID']) and ((pkt_time - _target_status[_slot]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                    if self.STATUS[_stream_id]['CONTENTION'] == False:
+                        self.STATUS[_stream_id]['CONTENTION'] = True
+                        logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['TX_TGID']))
+                    continue
+                '''
+                if (_dst_id == _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < STREAM_TO):
+                    if self.STATUS[_stream_id]['CONTENTION'] == False:
+                        self.STATUS[_stream_id]['CONTENTION'] = True
+                        logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['RX_TGID']))
+                    continue
+                if (_dst_id == _target_status[_slot]['TX_TGID']) and (_rf_src != _target_status[_slot]['TX_RFS']) and ((pkt_time - _target_status[_slot]['TX_TIME']) < STREAM_TO):
+                    if self.STATUS[_stream_id]['CONTENTION'] == False:
+                        self.STATUS[_stream_id]['CONTENTION'] = True
+                        logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target, _slot, int_id(_target_status[_slot]['TX_TGID']), int_id(_target_status[_slot]['TX_RFS']))
+                    continue
+
+                # Record target information if this is a new call stream?
+                if (_stream_id not in self.STATUS):
+                    # Record the DST TGID and Stream ID
+                    _target_status[_slot]['TX_START'] = pkt_time
+                    _target_status[_slot]['TX_TGID'] = _dst_id
+                    _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                    _target_status[_slot]['TX_RFS'] = _rf_src
+                    _target_status[_slot]['TX_PEER'] = _peer_id
+                    
+                    logger.info('(%s) Unit call bridged to HBP System: %s TS: %s, UNIT: %s', self._system, _target, _slot, int_id(_dst_id))
+                    if CONFIG['REPORTS']['REPORT']:
+                       systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+
+                # Set other values for the contention handler to test next time there is a frame to forward
+                _target_status[_slot]['TX_TIME'] = pkt_time
+                _target_status[_slot]['TX_TYPE'] = _dtype_vseq
+
+            #send the call:
+            systems[_target].send_system(_data)
+            
+            if _target_system['MODE'] == 'OPENBRIDGE':
+                if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
+                    if (_stream_id in _target_status):
+                        _target_status.pop(_stream_id)
+
+        
+        # Final actions - Is this a voice terminator?
+        if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
+            self._targets = []
+            call_duration = pkt_time - self.STATUS[_stream_id]['START']
+            logger.info('(%s) *UNIT CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT %s (%s), TS %s, Duration: %.2f', \
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
+            if CONFIG['REPORTS']['REPORT']:
+               self._report.send_bridgeEvent('UNIT VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
+
+
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
 
         if _call_type == 'group':
-            # Is this a new call stream?
-            if (_stream_id not in self.STATUS):
-                # This is a new call stream
-                self.STATUS[_stream_id] = {
-                    'START':     pkt_time,
-                    'CONTENTION':False,
-                    'RFS':       _rf_src,
-                    'TGID':      _dst_id,
-                }
+            self.group_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
+        elif _call_type == 'unit':
+            self.unit_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
+        elif _call_type == 'vscsbk':
+            logger.debug('CSBK recieved, but HBlink does not process them currently')
+        else:
+            logger.error('Unknown call type recieved -- not processed')
 
-                # If we can, use the LC from the voice header as to keep all options intact
-                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
-                    decoded = decode.voice_head_term(dmrpkt)
-                    self.STATUS[_stream_id]['LC'] = decoded['LC']
-
-                # If we don't have a voice header then don't wait to decode the Embedded LC
-                # just make a new one from the HBP header. This is good enough, and it saves lots of time
-                else:
-                    self.STATUS[_stream_id]['LC'] = LC_OPT + _dst_id + _rf_src
-
-
-                logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
-                if CONFIG['REPORTS']['REPORT']:
-                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
-
-            self.STATUS[_stream_id]['LAST'] = pkt_time
-
-
-            for _bridge in BRIDGES:
-                for _system in BRIDGES[_bridge]:
-
-                    if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
-
-                        for _target in BRIDGES[_bridge]:
-                            if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
-                                _target_status = systems[_target['SYSTEM']].STATUS
-                                _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
-                                if _target_system['MODE'] == 'OPENBRIDGE':
-                                    # Is this a new call stream on the target?
-                                    if (_stream_id not in _target_status):
-                                        # This is a new call stream on the target
-                                        _target_status[_stream_id] = {
-                                            'START':     pkt_time,
-                                            'CONTENTION':False,
-                                            'RFS':       _rf_src,
-                                            'TGID':      _dst_id,
-                                        }
-                                        # Generate LCs (full and EMB) for the TX stream
-                                        dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
-                                        _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(dst_lc)
-                                        _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(dst_lc)
-                                        _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(dst_lc)
-
-                                        logger.info('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-                                        if CONFIG['REPORTS']['REPORT']:
-                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
-
-                                    # Record the time of this packet so we can later identify a stale stream
-                                    _target_status[_stream_id]['LAST'] = pkt_time
-                                    # Clear the TS bit -- all OpenBridge streams are effectively on TS1
-                                    _tmp_bits = _bits & ~(1 << 7)
-
-                                    # Assemble transmit HBP packet header
-                                    _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-
-                                    # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
-                                    # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
-                                    # if _dst_id != rule['DST_GROUP']:
-                                    dmrbits = bitarray(endian='big')
-                                    dmrbits.frombytes(dmrpkt)
-                                    # Create a voice header packet (FULL LC)
-                                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
-                                        dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
-                                    # Create a voice terminator packet (FULL LC)
-                                    elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
-                                        dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
-                                        if CONFIG['REPORTS']['REPORT']:
-                                            call_duration = pkt_time - _target_status[_stream_id]['START']
-                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
-                                    # Create a Burst B-E packet (Embedded LC)
-                                    elif _dtype_vseq in [1,2,3,4]:
-                                        dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                                    dmrpkt = dmrbits.tobytes()
-                                    _tmp_data = b''.join([_tmp_data, dmrpkt])
-
-                                else:
-                                    # BEGIN CONTENTION HANDLING
-                                    #
-                                    # The rules for each of the 4 "ifs" below are listed here for readability. The Frame To Send is:
-                                    #   From a different group than last RX from this HBSystem, but it has been less than Group Hangtime
-                                    #   From a different group than last TX to this HBSystem, but it has been less than Group Hangtime
-                                    #   From the same group as the last RX from this HBSystem, but from a different subscriber, and it has been less than stream timeout
-                                    #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
-                                    # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
-                                    #
-                                    if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
-                                        if self.STATUS[_stream_id]['CONTENTION'] == False:
-                                            self.STATUS[_stream_id]['CONTENTION'] = True
-                                            logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
-                                        continue
-                                    if ((_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
-                                        if self.STATUS[_stream_id]['CONTENTION'] == False:
-                                            self.STATUS[_stream_id]['CONTENTION'] = True
-                                            logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
-                                        continue
-                                    if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
-                                        if self.STATUS[_stream_id]['CONTENTION'] == False:
-                                            self.STATUS[_stream_id]['CONTENTION'] = True
-                                            logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
-                                        continue
-                                    if (_target['TGID'] == _target_status[_target['TS']]['TX_TGID']) and (_rf_src != _target_status[_target['TS']]['TX_RFS']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO):
-                                        if self.STATUS[_stream_id]['CONTENTION'] == False:
-                                            self.STATUS[_stream_id]['CONTENTION'] = True
-                                            logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
-                                        continue
-
-                                    # Is this a new call stream?
-                                    if (_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id):
-                                        # Record the DST TGID and Stream ID
-                                        _target_status[_target['TS']]['TX_START'] = pkt_time
-                                        _target_status[_target['TS']]['TX_TGID'] = _target['TGID']
-                                        _target_status[_target['TS']]['TX_STREAM_ID'] = _stream_id
-                                        _target_status[_target['TS']]['TX_RFS'] = _rf_src
-                                        _target_status[_target['TS']]['TX_PEER'] = _peer_id
-                                        # Generate LCs (full and EMB) for the TX stream
-                                        dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
-                                        _target_status[_target['TS']]['TX_H_LC'] = bptc.encode_header_lc(dst_lc)
-                                        _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
-                                        _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
-                                        logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-                                        logger.info('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-                                        if CONFIG['REPORTS']['REPORT']:
-                                           systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
-
-                                    # Set other values for the contention handler to test next time there is a frame to forward
-                                    _target_status[_target['TS']]['TX_TIME'] = pkt_time
-                                    _target_status[_target['TS']]['TX_TYPE'] = _dtype_vseq
-
-                                    # Handle any necessary re-writes for the destination
-                                    if _system['TS'] != _target['TS']:
-                                        _tmp_bits = _bits ^ 1 << 7
-                                    else:
-                                        _tmp_bits = _bits
-
-                                    # Assemble transmit HBP packet header
-                                    _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-
-                                    # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
-                                    # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
-                                    # if _dst_id != rule['DST_GROUP']:
-                                    dmrbits = bitarray(endian='big')
-                                    dmrbits.frombytes(dmrpkt)
-                                    # Create a voice header packet (FULL LC)
-                                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
-                                        dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
-                                    # Create a voice terminator packet (FULL LC)
-                                    elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
-                                        dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
-                                        if CONFIG['REPORTS']['REPORT']:
-                                            call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
-                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
-                                    # Create a Burst B-E packet (Embedded LC)
-                                    elif _dtype_vseq in [1,2,3,4]:
-                                        dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                                    dmrpkt = dmrbits.tobytes()
-                                    _tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
-
-                                # Transmit the packet to the destination system
-                                systems[_target['SYSTEM']].send_system(_tmp_data)
-                                #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-
-
-
-            # Final actions - Is this a voice terminator?
-            if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
-                call_duration = pkt_time - self.STATUS[_stream_id]['START']
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
-                if CONFIG['REPORTS']['REPORT']:
-                   self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
-                removed = self.STATUS.pop(_stream_id)
-                logger.debug('(%s) OpenBridge sourced call stream end, remove terminated Stream ID: %s', self._system, int_id(_stream_id))
-                if not removed:
-                    selflogger.error('(%s) *CALL END*   STREAM ID: %s NOT IN LIST -- THIS IS A REAL PROBLEM', self._system, int_id(_stream_id))
 
 class routerHBP(HBSYSTEM):
 
     def __init__(self, _name, _config, _report):
         HBSYSTEM.__init__(self, _name, _config, _report)
+        self.name = _name
+
+        # list of self._targets for unit (subscriber, private) calls
+        self._targets = []
 
         # Status information for the system, TS1 & TS2
         # 1 & 2 are "timeslot"
@@ -456,252 +648,412 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
+
+    def group_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
+        global UNIT_MAP
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
+        
+        # Make/update an entry in the UNIT_MAP for this subscriber
+        UNIT_MAP[_rf_src] = (self.name, pkt_time)
 
-        if _call_type == 'group':
+        # Is this a new call stream?
+        if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+            if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
+                logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
+                return
 
-            # Is this a new call stream?
-            if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
-                if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
-                    logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
-                    return
+            # This is a new call stream
+            self.STATUS[_slot]['RX_START'] = pkt_time
+            logger.info('(%s) *GROUP CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            if CONFIG['REPORTS']['REPORT']:
+                self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
-                # This is a new call stream
-                self.STATUS[_slot]['RX_START'] = pkt_time
-                logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
-                if CONFIG['REPORTS']['REPORT']:
-                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            # If we can, use the LC from the voice header as to keep all options intact
+            if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                decoded = decode.voice_head_term(dmrpkt)
+                self.STATUS[_slot]['RX_LC'] = decoded['LC']
 
-                # If we can, use the LC from the voice header as to keep all options intact
-                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
-                    decoded = decode.voice_head_term(dmrpkt)
-                    self.STATUS[_slot]['RX_LC'] = decoded['LC']
+            # If we don't have a voice header then don't wait to decode it from the Embedded LC
+            # just make a new one from the HBP header. This is good enough, and it saves lots of time
+            else:
+                self.STATUS[_slot]['RX_LC'] = LC_OPT + _dst_id + _rf_src
 
-                # If we don't have a voice header then don't wait to decode it from the Embedded LC
-                # just make a new one from the HBP header. This is good enough, and it saves lots of time
-                else:
-                    self.STATUS[_slot]['RX_LC'] = LC_OPT + _dst_id + _rf_src
+        for _bridge in BRIDGES:
+            for _system in BRIDGES[_bridge]:
+
+                if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
+
+                    for _target in BRIDGES[_bridge]:
+                        if _target['SYSTEM'] != self._system:
+                            if _target['ACTIVE']:
+                                _target_status = systems[_target['SYSTEM']].STATUS
+                                _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+
+                                if _target_system['MODE'] == 'OPENBRIDGE':
+                                    # Is this a new call stream on the target?
+                                    if (_stream_id not in _target_status):
+                                        # This is a new call stream on the target
+                                        _target_status[_stream_id] = {
+                                            'START':     pkt_time,
+                                            'CONTENTION':False,
+                                            'RFS':       _rf_src,
+                                            'TYPE':     'GROUP',
+                                            'DST':      _dst_id,
+                                            'ACTIVE':   True,
+                                        }
+                                        # Generate LCs (full and EMB) for the TX stream
+                                        dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
+                                        _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(dst_lc)
+                                        _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(dst_lc)
+                                        _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(dst_lc)
+
+                                        logger.info('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                                        if CONFIG['REPORTS']['REPORT']:
+                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+
+                                    # Record the time of this packet so we can later identify a stale stream
+                                    _target_status[_stream_id]['LAST'] = pkt_time
+                                    # Clear the TS bit -- all OpenBridge streams are effectively on TS1
+                                    _tmp_bits = _bits & ~(1 << 7)
+
+                                    # Assemble transmit HBP packet header
+                                    _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+
+                                    # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
+                                    # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
+                                    # if _dst_id != rule['DST_GROUP']:
+                                    dmrbits = bitarray(endian='big')
+                                    dmrbits.frombytes(dmrpkt)
+                                    # Create a voice header packet (FULL LC)
+                                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                                        dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
+                                    # Create a voice terminator packet (FULL LC)
+                                    elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                                        dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
+                                        if CONFIG['REPORTS']['REPORT']:
+                                            call_duration = pkt_time - _target_status[_stream_id]['START']
+                                            _target_status[_stream_id]['ACTIVE'] = False
+                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
+                                    # Create a Burst B-E packet (Embedded LC)
+                                    elif _dtype_vseq in [1,2,3,4]:
+                                        dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                                    dmrpkt = dmrbits.tobytes()
+                                    _tmp_data = b''.join([_tmp_data, dmrpkt])
+
+                                else:
+                                    # BEGIN STANDARD CONTENTION HANDLING
+                                    #
+                                    # The rules for each of the 4 "ifs" below are listed here for readability. The Frame To Send is:
+                                    #   From a different group than last RX from this HBSystem, but it has been less than Group Hangtime
+                                    #   From a different group than last TX to this HBSystem, but it has been less than Group Hangtime
+                                    #   From the same group as the last RX from this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                                    #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                                    # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
+                                    #
+                                    if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                                            logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
+                                        continue
+                                    if ((_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                                            logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
+                                        continue
+                                    if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
+                                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                                            logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
+                                        continue
+                                    if (_target['TGID'] == _target_status[_target['TS']]['TX_TGID']) and (_rf_src != _target_status[_target['TS']]['TX_RFS']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO):
+                                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                                            logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
+                                        continue
+
+                                    # Is this a new call stream?
+                                    if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                                        # Record the DST TGID and Stream ID
+                                        _target_status[_target['TS']]['TX_START'] = pkt_time
+                                        _target_status[_target['TS']]['TX_TGID'] = _target['TGID']
+                                        _target_status[_target['TS']]['TX_STREAM_ID'] = _stream_id
+                                        _target_status[_target['TS']]['TX_RFS'] = _rf_src
+                                        _target_status[_target['TS']]['TX_PEER'] = _peer_id
+                                        # Generate LCs (full and EMB) for the TX stream
+                                        dst_lc = self.STATUS[_slot]['RX_LC'][0:3] + _target['TGID'] + _rf_src
+                                        _target_status[_target['TS']]['TX_H_LC'] = bptc.encode_header_lc(dst_lc)
+                                        _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
+                                        _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
+                                        logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                                        logger.info('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                                        if CONFIG['REPORTS']['REPORT']:
+                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+
+                                    # Set other values for the contention handler to test next time there is a frame to forward
+                                    _target_status[_target['TS']]['TX_TIME'] = pkt_time
+                                    _target_status[_target['TS']]['TX_TYPE'] = _dtype_vseq
+
+                                    # Handle any necessary re-writes for the destination
+                                    if _system['TS'] != _target['TS']:
+                                        _tmp_bits = _bits ^ 1 << 7
+                                    else:
+                                        _tmp_bits = _bits
+
+                                    # Assemble transmit HBP packet header
+                                    _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+
+                                    dmrbits = bitarray(endian='big')
+                                    dmrbits.frombytes(dmrpkt)
+                                    # Create a voice header packet (FULL LC)
+                                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                                        dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
+                                    # Create a voice terminator packet (FULL LC)
+                                    elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                                        dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
+                                        if CONFIG['REPORTS']['REPORT']:
+                                            call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
+                                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
+                                    # Create a Burst B-E packet (Embedded LC)
+                                    elif _dtype_vseq in [1,2,3,4]:
+                                        dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                                    dmrpkt = dmrbits.tobytes()
+                                    _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
+
+                                # Transmit the packet to the destination system
+                                systems[_target['SYSTEM']].send_system(_tmp_data)
+                                #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                                
+                                if _target_system['MODE'] == 'OPENBRIDGE':
+                                    if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+                                        if (_stream_id in _target_status):
+                                            _target_status.pop(_stream_id)
+
+
+        # Final actions - Is this a voice terminator?
+        if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+            call_duration = pkt_time - self.STATUS[_slot]['RX_START']
+            logger.info('(%s) *GROUP CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f', \
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
+            if CONFIG['REPORTS']['REPORT']:
+               self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
+
+            #
+            # Begin in-band signalling for call end. This has nothign to do with routing traffic directly.
+            #
+
+            # Iterate the rules dictionary
 
             for _bridge in BRIDGES:
                 for _system in BRIDGES[_bridge]:
+                    if _system['SYSTEM'] == self._system:
 
-                    if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
+                        # TGID matches a rule source, reset its timer
+                        if _slot == _system['TS'] and _dst_id == _system['TGID'] and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True)) or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False)):
+                            _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                            logger.info('(%s) Transmission match for Bridge: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
 
-                        for _target in BRIDGES[_bridge]:
-                            if _target['SYSTEM'] != self._system:
-                                if _target['ACTIVE']:
-                                    _target_status = systems[_target['SYSTEM']].STATUS
-                                    _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
-
-                                    if _target_system['MODE'] == 'OPENBRIDGE':
-                                        # Is this a new call stream on the target?
-                                        if (_stream_id not in _target_status):
-                                            # This is a new call stream on the target
-                                            _target_status[_stream_id] = {
-                                                'START':     pkt_time,
-                                                'CONTENTION':False,
-                                                'RFS':       _rf_src,
-                                                'TGID':      _dst_id,
-                                            }
-                                            # Generate LCs (full and EMB) for the TX stream
-                                            dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
-                                            _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(dst_lc)
-                                            _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(dst_lc)
-                                            _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(dst_lc)
-
-                                            logger.info('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-                                            if CONFIG['REPORTS']['REPORT']:
-                                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
-                                            
-                                        # Record the time of this packet so we can later identify a stale stream
-                                        _target_status[_stream_id]['LAST'] = pkt_time
-                                        # Clear the TS bit -- all OpenBridge streams are effectively on TS1
-                                        _tmp_bits = _bits & ~(1 << 7)
-
-                                        # Assemble transmit HBP packet header
-                                        _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-
-                                        # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
-                                        # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
-                                        # if _dst_id != rule['DST_GROUP']:
-                                        dmrbits = bitarray(endian='big')
-                                        dmrbits.frombytes(dmrpkt)
-                                        # Create a voice header packet (FULL LC)
-                                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
-                                            dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
-                                        # Create a voice terminator packet (FULL LC)
-                                        elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
-                                            dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
-                                            if CONFIG['REPORTS']['REPORT']:
-                                                call_duration = pkt_time - _target_status[_stream_id]['START']
-                                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
-                                        # Create a Burst B-E packet (Embedded LC)
-                                        elif _dtype_vseq in [1,2,3,4]:
-                                            dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                                        dmrpkt = dmrbits.tobytes()
-                                        _tmp_data = b''.join([_tmp_data, dmrpkt])
-
-                                    else:
-                                        # BEGIN STANDARD CONTENTION HANDLING
-                                        #
-                                        # The rules for each of the 4 "ifs" below are listed here for readability. The Frame To Send is:
-                                        #   From a different group than last RX from this HBSystem, but it has been less than Group Hangtime
-                                        #   From a different group than last TX to this HBSystem, but it has been less than Group Hangtime
-                                        #   From the same group as the last RX from this HBSystem, but from a different subscriber, and it has been less than stream timeout
-                                        #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
-                                        # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
-                                        #
-                                        if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
-                                            if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
-                                                logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
-                                            continue
-                                        if ((_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
-                                            if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
-                                                logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
-                                            continue
-                                        if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
-                                            if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
-                                                logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
-                                            continue
-                                        if (_target['TGID'] == _target_status[_target['TS']]['TX_TGID']) and (_rf_src != _target_status[_target['TS']]['TX_RFS']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO):
-                                            if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
-                                                logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
-                                            continue
-
-                                        # Is this a new call stream?
-                                        if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
-                                             # Record the DST TGID and Stream ID
-                                             _target_status[_target['TS']]['TX_START'] = pkt_time
-                                             _target_status[_target['TS']]['TX_TGID'] = _target['TGID']
-                                             _target_status[_target['TS']]['TX_STREAM_ID'] = _stream_id
-                                             _target_status[_target['TS']]['TX_RFS'] = _rf_src
-                                             _target_status[_target['TS']]['TX_PEER'] = _peer_id
-                                             # Generate LCs (full and EMB) for the TX stream
-                                             dst_lc = self.STATUS[_slot]['RX_LC'][0:3] + _target['TGID'] + _rf_src
-                                             _target_status[_target['TS']]['TX_H_LC'] = bptc.encode_header_lc(dst_lc)
-                                             _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
-                                             _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
-                                             logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-                                             logger.info('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-                                             if CONFIG['REPORTS']['REPORT']:
-                                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
-
-                                        # Set other values for the contention handler to test next time there is a frame to forward
-                                        _target_status[_target['TS']]['TX_TIME'] = pkt_time
-                                        _target_status[_target['TS']]['TX_TYPE'] = _dtype_vseq
-
-                                        # Handle any necessary re-writes for the destination
-                                        if _system['TS'] != _target['TS']:
-                                            _tmp_bits = _bits ^ 1 << 7
-                                        else:
-                                            _tmp_bits = _bits
-
-                                        # Assemble transmit HBP packet header
-                                        _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-
-                                        # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
-                                        # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
-                                        # if _dst_id != rule['DST_GROUP']:
-                                        dmrbits = bitarray(endian='big')
-                                        dmrbits.frombytes(dmrpkt)
-                                        # Create a voice header packet (FULL LC)
-                                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
-                                            dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
-                                        # Create a voice terminator packet (FULL LC)
-                                        elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
-                                            dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
-                                            if CONFIG['REPORTS']['REPORT']:
-                                                call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
-                                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
-                                        # Create a Burst B-E packet (Embedded LC)
-                                        elif _dtype_vseq in [1,2,3,4]:
-                                            dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                                        dmrpkt = dmrbits.tobytes()
-                                        _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
-
-                                    # Transmit the packet to the destination system
-                                    systems[_target['SYSTEM']].send_system(_tmp_data)
-                                    #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-
-
-
-            # Final actions - Is this a voice terminator?
-            if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
-                call_duration = pkt_time - self.STATUS[_slot]['RX_START']
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
-                if CONFIG['REPORTS']['REPORT']:
-                   self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
-
-                #
-                # Begin in-band signalling for call end. This has nothign to do with routing traffic directly.
-                #
-
-                # Iterate the rules dictionary
-
-                for _bridge in BRIDGES:
-                    for _system in BRIDGES[_bridge]:
-                        if _system['SYSTEM'] == self._system:
-
-                            # TGID matches a rule source, reset its timer
-                            if _slot == _system['TS'] and _dst_id == _system['TGID'] and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True)) or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False)):
+                        # TGID matches an ACTIVATION trigger
+                        if (_dst_id in _system['ON'] or _dst_id in _system['RESET']) and _slot == _system['TS']:
+                            # Set the matching rule as ACTIVE
+                            if _dst_id in _system['ON']:
+                                if _system['ACTIVE'] == False:
+                                    _system['ACTIVE'] = True
+                                    _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                    logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                    # Cancel the timer if we've enabled an "OFF" type timeout
+                                    if _system['TO_TYPE'] == 'OFF':
+                                        _system['TIMER'] = pkt_time
+                                        logger.info('(%s) Bridge: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
+                            # Reset the timer for the rule
+                            if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON':
                                 _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                logger.info('(%s) Transmission match for Bridge: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
+                                logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
 
-                            # TGID matches an ACTIVATION trigger
-                            if (_dst_id in _system['ON'] or _dst_id in _system['RESET']) and _slot == _system['TS']:
-                                # Set the matching rule as ACTIVE
-                                if _dst_id in _system['ON']:
-                                    if _system['ACTIVE'] == False:
-                                        _system['ACTIVE'] = True
-                                        _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                        logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
-                                        # Cancel the timer if we've enabled an "OFF" type timeout
-                                        if _system['TO_TYPE'] == 'OFF':
-                                            _system['TIMER'] = pkt_time
-                                            logger.info('(%s) Bridge: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
-                                # Reset the timer for the rule
-                                if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON':
-                                    _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                    logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                        # TGID matches an DE-ACTIVATION trigger
+                        if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
+                            # Set the matching rule as ACTIVE
+                            if _dst_id in _system['OFF']:
+                                if _system['ACTIVE'] == True:
+                                    _system['ACTIVE'] = False
+                                    logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                    # Cancel the timer if we've enabled an "ON" type timeout
+                                    if _system['TO_TYPE'] == 'ON':
+                                        _system['TIMER'] = pkt_time
+                                        logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                            # Reset the timer for the rule
+                            if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
+                                _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                            # Cancel the timer if we've enabled an "ON" type timeout
+                            if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_group in _system['OFF']:
+                                _system['TIMER'] = pkt_time
+                                logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
 
-                            # TGID matches an DE-ACTIVATION trigger
-                            if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
-                                # Set the matching rule as ACTIVE
-                                if _dst_id in _system['OFF']:
-                                    if _system['ACTIVE'] == True:
-                                        _system['ACTIVE'] = False
-                                        logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
-                                        # Cancel the timer if we've enabled an "ON" type timeout
-                                        if _system['TO_TYPE'] == 'ON':
-                                            _system['TIMER'] = pkt_time
-                                            logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
-                                # Reset the timer for the rule
-                                if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
-                                    _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                    logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
-                                # Cancel the timer if we've enabled an "ON" type timeout
-                                if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_group in _system['OFF']:
-                                    _system['TIMER'] = pkt_time
-                                    logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
-
-            #
-            # END IN-BAND SIGNALLING
-            #
+        #
+        # END IN-BAND SIGNALLING
+        #
+        # Mark status variables for use later
+        self.STATUS[_slot]['RX_PEER']      = _peer_id
+        self.STATUS[_slot]['RX_SEQ']       = _seq
+        self.STATUS[_slot]['RX_RFS']       = _rf_src
+        self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
+        self.STATUS[_slot]['RX_TGID']      = _dst_id
+        self.STATUS[_slot]['RX_TIME']      = pkt_time
+        self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
 
 
-            # Mark status variables for use later
-            self.STATUS[_slot]['RX_PEER']      = _peer_id
-            self.STATUS[_slot]['RX_SEQ']       = _seq
-            self.STATUS[_slot]['RX_RFS']       = _rf_src
-            self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
-            self.STATUS[_slot]['RX_TGID']      = _dst_id
-            self.STATUS[_slot]['RX_TIME']      = pkt_time
-            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+    def unit_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data):
+        global UNIT_MAP
+        pkt_time = time()
+        dmrpkt = _data[20:53]
+        _bits = _data[15]
+ 
+        # Make/update this unit in the UNIT_MAP cache
+        UNIT_MAP[_rf_src] = (self.name, pkt_time)
+        
+        
+        # Is this a new call stream?
+        if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+            
+            # Collision in progress, bail out!
+            if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
+                logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> UNIT %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
+                return
+                
+            # Create a destination list for the call:
+            if _dst_id in UNIT_MAP:
+                if UNIT_MAP[_dst_id][0] != self._system:
+                    self._targets = [UNIT_MAP[_dst_id][0]]
+                else:
+                    self._targets = []
+                    logger.error('UNIT call to a subscriber on the same system, send nothing')
+            else:
+                self._targets = list(UNIT)
+                self._targets.remove(self._system)
+            
+            # This is a new call stream, so log & report
+            self.STATUS[_slot]['RX_START'] = pkt_time
+            logger.info('(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT: %s (%s), TS: %s, FORWARD: %s', \
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, self._targets)
+            if CONFIG['REPORTS']['REPORT']:
+                self._report.send_bridgeEvent('UNIT VOICE,START,RX,{},{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), self._targets).encode(encoding='utf-8', errors='ignore'))
+
+        for _target in self._targets:
+                
+            _target_status = systems[_target].STATUS
+            _target_system = self._CONFIG['SYSTEMS'][_target]
+            
+            if self._CONFIG['SYSTEMS'][_target]['MODE'] == 'OPENBRIDGE':
+                if (_stream_id not in _target_status):
+                    # This is a new call stream on the target
+                    _target_status[_stream_id] = {
+                        'START':     pkt_time,
+                        'CONTENTION':False,
+                        'RFS':       _rf_src,
+                        'TYPE':      'UNIT',
+                        'DST':      _dst_id,
+                        'ACTIVE':   True
+                    }
+
+                    logger.info('(%s) Unit call bridged to OBP System: %s TS: %s, UNIT: %s', self._system, _target, _slot if _target_system['BOTH_SLOTS'] else 1, int_id(_dst_id))
+                    if CONFIG['REPORTS']['REPORT']:
+                        systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+
+                # Record the time of this packet so we can later identify a stale stream
+                _target_status[_stream_id]['LAST'] = pkt_time
+                # Clear the TS bit and follow propper OBP definition, unless "BOTH_SLOTS" is set. This only works for unit calls.
+                if _target_system['BOTH_SLOTS']:
+                    _tmp_bits = _bits
+                else:
+                    _tmp_bits = _bits & ~(1 << 7)
+
+                # Assemble transmit HBP packet
+                _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                _data = b''.join([_tmp_data, dmrpkt])
+                
+                if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
+                    _target_status[_stream_id]['ACTIVE'] = False
+
+            else:
+                # BEGIN STANDARD CONTENTION HANDLING
+                #
+                # The rules for each of the 4 "ifs" below are listed here for readability. The Frame To Send is:
+                #   From a different group than last RX from this HBSystem, but it has been less than Group Hangtime
+                #   From a different group than last TX to this HBSystem, but it has been less than Group Hangtime
+                #   From the same group as the last RX from this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
+                # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
+                #
+                '''
+                if ((_dst_id != _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                        logger.info('(%s) Call not routed to destination %s, target active or in group hangtime: HBSystem: %s, TS: %s, DEST: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['RX_TGID']))
+                    continue
+                if ((_dst_id != _target_status[_slot]['TX_TGID']) and ((pkt_time - _target_status[_slot]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                        logger.info('(%s) Call not routed to destination %s, target in group hangtime: HBSystem: %s, TS: %s, DEST: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['TX_TGID']))
+                    continue
+                '''
+                if (_dst_id == _target_status[_slot]['RX_TGID']) and ((pkt_time - _target_status[_slot]['RX_TIME']) < STREAM_TO):
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                        logger.info('(%s) Call not routed to destination %s, matching call already active on target: HBSystem: %s, TS: %s, DEST: %s', self._system, int_id(_dst_id), _target, _slot, int_id(_target_status[_slot]['RX_TGID']))
+                    continue
+                if (_dst_id == _target_status[_slot]['TX_TGID']) and (_rf_src != _target_status[_slot]['TX_RFS']) and ((pkt_time - _target_status[_slot]['TX_TIME']) < STREAM_TO):
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                        logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, DEST: %s, SUB: %s', self._system, int_id(_rf_src), _target, _slot, int_id(_target_status[_slot]['TX_TGID']), int_id(_target_status[_slot]['TX_RFS']))
+                    continue
+
+                # Record target information if this is a new call stream?
+                if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                    # Record the DST TGID and Stream ID
+                    _target_status[_slot]['TX_START'] = pkt_time
+                    _target_status[_slot]['TX_TGID'] = _dst_id
+                    _target_status[_slot]['TX_STREAM_ID'] = _stream_id
+                    _target_status[_slot]['TX_RFS'] = _rf_src
+                    _target_status[_slot]['TX_PEER'] = _peer_id
+                    
+                    logger.info('(%s) Unit call bridged to HBP System: %s TS: %s, UNIT: %s', self._system, _target, _slot, int_id(_dst_id))
+                    if CONFIG['REPORTS']['REPORT']:
+                       systems[_target]._report.send_bridgeEvent('UNIT VOICE,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+
+                # Set other values for the contention handler to test next time there is a frame to forward
+                _target_status[_slot]['TX_TIME'] = pkt_time
+                _target_status[_slot]['TX_TYPE'] = _dtype_vseq
+
+            #send the call:
+            systems[_target].send_system(_data)
+                        
+        
+        # Final actions - Is this a voice terminator?
+        if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+            self._targets = []
+            call_duration = pkt_time - self.STATUS[_slot]['RX_START']
+            logger.info('(%s) *UNIT CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) UNIT %s (%s), TS %s, Duration: %.2f', \
+                    self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
+            if CONFIG['REPORTS']['REPORT']:
+               self._report.send_bridgeEvent('UNIT VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
+
+        # Mark status variables for use later
+        self.STATUS[_slot]['RX_PEER']      = _peer_id
+        self.STATUS[_slot]['RX_SEQ']       = _seq
+        self.STATUS[_slot]['RX_RFS']       = _rf_src
+        self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
+        self.STATUS[_slot]['RX_TGID']      = _dst_id
+        self.STATUS[_slot]['RX_TIME']      = pkt_time
+        self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+
+
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
+        if _call_type == 'group':
+            self.group_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
+        elif _call_type == 'unit':
+            if self._system not in UNIT:
+                logger.error('(%s) *UNIT CALL NOT FORWARDED* UNIT calling is disabled for this system (INGRESS)', self._system)
+            else:
+                self.unit_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
+        elif _call_type == 'vscsbk':
+            logger.debug('CSBK recieved, but HBlink does not process them currently')
+        else:
+            logger.error('Unknown call type recieved -- not processed')
 
 #
 # Socket-based reporting section
@@ -754,7 +1106,7 @@ if __name__ == '__main__':
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
-    logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
+    logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018, 2019, 2020\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
     # Set up the signal handler
@@ -782,6 +1134,9 @@ if __name__ == '__main__':
 
     # Build the routing rules file
     BRIDGES = make_bridges(rules_module.BRIDGES)
+    
+    # Get rule parameter for private calls
+    UNIT = rules_module.UNIT
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:

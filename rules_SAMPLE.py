@@ -47,6 +47,18 @@ BRIDGES = {
         ]
 }
 
+'''
+list the names of each system that should bridge unit to unit (individual) calls.
+'''
+
+UNIT = ['ONE', 'TWO']
+
+'''
+This is for testing the syntax of the file. It won't eliminate all errors, but running this file
+like it were a Python program itself will tell you if the syntax is correct!
+'''
+
 if __name__ == '__main__':
     from pprint import pprint
     pprint(BRIDGES)
+    print(UNIT)

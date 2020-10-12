@@ -45,11 +45,7 @@ from twisted.internet import reactor, task
 import log
 import config
 from const import *
-from dmr_utils3.utils import int_id, bytes_4, try_download, mk_id_dict
-
-# Imports for the reporting server
-import pickle
-from reporting_const import *
+from dmr_utils3.utils import int_id, bytes_4
 
 # The module needs logging logging, but handlers, etc. are controlled by the parent
 import logging
@@ -65,23 +61,6 @@ __email__      = 'n0mjs@me.com'
 
 # Global variables used whether we are a module or __main__
 systems = {}
-
-# Timed loop used for reporting HBP status
-def config_reports(_config, _factory):
-    def reporting_loop(_logger, _server):
-        _logger.debug('(GLOBAL) Periodic reporting loop started')
-        _server.send_config()
-
-    logger.info('(GLOBAL) HBlink TCP reporting server configured')
-
-    report_server = _factory(_config)
-    report_server.clients = []
-    reactor.listenTCP(_config['REPORTS']['REPORT_PORT'], report_server)
-
-    reporting = task.LoopingCall(reporting_loop, logger, report_server)
-    reporting.start(_config['REPORTS']['REPORT_INTERVAL'])
-
-    return report_server
 
 
 # Shut ourselves down gracefully by disconnecting from the masters and peers.
@@ -105,11 +84,10 @@ def acl_check(_id, _acl):
 #************************************************
 
 class OPENBRIDGE(DatagramProtocol):
-    def __init__(self, _name, _config, _report):
+    def __init__(self, _name, _config):
         # Define a few shortcuts to make the rest of the class more readable
         self._CONFIG = _config
         self._system = _name
-        self._report = _report
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = deque([], 20)
 
@@ -200,11 +178,10 @@ class OPENBRIDGE(DatagramProtocol):
 #************************************************
 
 class HBSYSTEM(DatagramProtocol):
-    def __init__(self, _name, _config, _report):
+    def __init__(self, _name, _config):
         # Define a few shortcuts to make the rest of the class more readable
         self._CONFIG = _config
         self._system = _name
-        self._report = _report
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = {1: b'', 2: b''}
 
@@ -650,79 +627,7 @@ class HBSYSTEM(DatagramProtocol):
 
             else:
                 logger.error('(%s) Received an invalid command in packet: %s', self._system, ahex(_data))
-
-#
-# Socket-based reporting section
-#
-class report(NetstringReceiver):
-    def __init__(self, factory):
-        self._factory = factory
-
-    def connectionMade(self):
-        self._factory.clients.append(self)
-        logger.info('(REPORT) HBlink reporting client connected: %s', self.transport.getPeer())
-
-    def connectionLost(self, reason):
-        logger.info('(REPORT) HBlink reporting client disconnected: %s', self.transport.getPeer())
-        self._factory.clients.remove(self)
-
-    def stringReceived(self, data):
-        self.process_message(data)
-
-    def process_message(self, _message):
-        opcode = _message[:1]
-        if opcode == REPORT_OPCODES['CONFIG_REQ']:
-            logger.info('(REPORT) HBlink reporting client sent \'CONFIG_REQ\': %s', self.transport.getPeer())
-            self.send_config()
-        else:
-            logger.error('(REPORT) got unknown opcode')
-
-class reportFactory(Factory):
-    def __init__(self, config):
-        self._config = config
-
-    def buildProtocol(self, addr):
-        if (addr.host) in self._config['REPORTS']['REPORT_CLIENTS'] or '*' in self._config['REPORTS']['REPORT_CLIENTS']:
-            logger.debug('(REPORT) Permitting report server connection attempt from: %s:%s', addr.host, addr.port)
-            return report(self)
-        else:
-            logger.error('(REPORT) Invalid report server connection attempt from: %s:%s', addr.host, addr.port)
-            return None
-
-    def send_clients(self, _message):
-        for client in self.clients:
-            client.sendString(_message)
-
-    def send_config(self):
-        serialized = pickle.dumps(self._config['SYSTEMS'], protocol=2) #.decode('utf-8', errors='ignore') #pickle.HIGHEST_PROTOCOL)
-        self.send_clients(b''.join([REPORT_OPCODES['CONFIG_SND'], serialized]))
-
-
-# ID ALIAS CREATION
-# Download
-def mk_aliases(_config):
-    if _config['ALIASES']['TRY_DOWNLOAD'] == True:
-        # Try updating peer aliases file
-        result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'], _config['ALIASES']['PEER_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info('(GLOBAL) %s', result)
-        # Try updating subscriber aliases file
-        result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'], _config['ALIASES']['SUBSCRIBER_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info('(GLOBAL) %s', result)
-
-    # Make Dictionaries
-    peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
-    if peer_ids:
-        logger.info('(GLOBAL) ID ALIAS MAPPER: peer_ids dictionary is available')
-
-    subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
-    if subscriber_ids:
-        logger.info('(GLOBAL) ID ALIAS MAPPER: subscriber_ids dictionary is available')
-
-    talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
-    if talkgroup_ids:
-        logger.info('(GLOBAL) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
-
-    return peer_ids, subscriber_ids, talkgroup_ids
+                
 
 #************************************************
 #      MAIN PROGRAM LOOP STARTS HERE
@@ -769,23 +674,15 @@ if __name__ == '__main__':
     for sig in [signal.SIGTERM, signal.SIGINT]:
         signal.signal(sig, sig_handler)
 
-    peer_ids, subscriber_ids, talkgroup_ids = mk_aliases(CONFIG)
-
-    # INITIALIZE THE REPORTING LOOP
-    if CONFIG['REPORTS']['REPORT']:
-        report_server = config_reports(CONFIG, reportFactory)
-    else:
-        report_server = None
-        logger.info('(REPORT) TCP Socket reporting not configured')
 
     # HBlink instance creation
     logger.info('(GLOBAL) HBlink \'HBlink.py\' -- SYSTEM STARTING...')
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-                systems[system] = OPENBRIDGE(system, CONFIG, report_server)
+                systems[system] = OPENBRIDGE(system, CONFIG)
             else:
-                systems[system] = HBSYSTEM(system, CONFIG, report_server)
+                systems[system] = HBSYSTEM(system, CONFIG)
             reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
             logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
 

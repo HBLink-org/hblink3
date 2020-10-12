@@ -519,6 +519,14 @@ class HBSYSTEM(DatagramProtocol):
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.warning('(%s) Ping from Radio ID that is not logged in: %s', self._system, int_id(_peer_id))
 
+        elif _command == RPTO:
+            _peer_id = _data[4:8]
+            if _peer_id in self._peers \
+                        and self._peers[_peer_id]['CONNECTION'] == 'YES' \
+                        and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
+                logger.info('(%s) Peer %s (%s) has send options: %s', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id), _data[8:])
+                self.transport.write(b''.join([RPTACK, _peer_id]), _sockaddr)
+
         else:
             logger.error('(%s) Unrecognized command. Raw HBP PDU: %s', self._system, ahex(_data))
 

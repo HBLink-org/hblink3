@@ -497,6 +497,11 @@ class HBSYSTEM(DatagramProtocol):
                 logger.info('(%s) Peer %s (%s) has send options: %s', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id), _data[8:])
                 self.transport.write(b''.join([RPTACK, _peer_id]), _sockaddr)
 
+
+        elif _command == DMRA:
+            _peer_if = _data[4:8]
+            logger.info('(%s) Recieved DMR Talker Alias from peer %s, subscriber %s', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id))
+            
         else:
             logger.error('(%s) Unrecognized command. Raw HBP PDU: %s', self._system, ahex(_data))
 

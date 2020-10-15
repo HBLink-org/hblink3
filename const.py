@@ -50,6 +50,7 @@ HBPF_SLT_VHEAD  = 0x1
 HBPF_SLT_VTERM  = 0x2
 
 # HomeBrew Protocol Commands
+DMRA    = b'DMRA'
 DMRD    = b'DMRD'
 MSTCL   = b'MSTCL'
 MSTNAK  = b'MSTNAK'
@@ -67,7 +68,6 @@ RPTC    = b'RPTC'
 RPTP    = b'RPTP'
 RPTA    = b'RPTA'
 RPTO    = b'RPTO'
-DMRA    = b'DMRA'
 
 
 # Higheset peer ID permitted by HBP

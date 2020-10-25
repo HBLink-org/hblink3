@@ -519,6 +519,18 @@ class HBSYSTEM(DatagramProtocol):
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.warning('(%s) Ping from Radio ID that is not logged in: %s', self._system, int_id(_peer_id))
 
+        elif _command == RPTO:
+            _peer_id = _data[4:8]
+            if _peer_id in self._peers \
+                        and self._peers[_peer_id]['CONNECTION'] == 'YES' \
+                        and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
+                logger.info('(%s) Peer %s (%s) has send options: %s', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id), _data[8:])
+                self.transport.write(b''.join([RPTACK, _peer_id]), _sockaddr)
+
+        elif _command == DMRA:
+            _peer_id = _data[4:8]
+            logger.info('(%s) Recieved DMR Talker Alias from peer %s, subscriber %s', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_rf_src))
+
         else:
             logger.error('(%s) Unrecognized command. Raw HBP PDU: %s', self._system, ahex(_data))
 
@@ -648,6 +660,7 @@ class HBSYSTEM(DatagramProtocol):
                             self._stats['CONNECTION'] = 'YES'
                             self._stats['CONNECTED'] = time()
                             logger.info('(%s) Connection to Master Completed', self._system)
+
                             # If we are an XLX, send the XLX module request here.
                             if self._config['MODE'] == 'XLXPEER':
                                 self.send_xlxmaster(self._config['RADIO_ID'], int(4000), self._config['MASTER_SOCKADDR'])

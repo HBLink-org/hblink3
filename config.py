@@ -182,8 +182,8 @@ def build_config(_config_file):
                         'SOFTWARE_ID': bytes(config.get(section, 'SOFTWARE_ID').ljust(40)[:40], 'utf-8'),
                         'PACKAGE_ID': bytes(config.get(section, 'PACKAGE_ID').ljust(40)[:40], 'utf-8'),
                         'GROUP_HANGTIME': config.getint(section, 'GROUP_HANGTIME'),
-                        'OPTIONS': bytes(config.get(section, 'OPTIONS'), 'utf-8'),
-                        'USE_ACL': config.getboolean(section, 'USE_ACL'),
+			'OPTIONS': b''.join([b'Type=HBlink;', bytes(config.get(section, 'OPTIONS'), 'utf-8')]),
+			'USE_ACL': config.getboolean(section, 'USE_ACL'),
                         'SUB_ACL': config.get(section, 'SUB_ACL'),
                         'TG1_ACL': config.get(section, 'TGID_TS1_ACL'),
                         'TG2_ACL': config.get(section, 'TGID_TS2_ACL')
@@ -274,6 +274,7 @@ def build_config(_config_file):
                         'TARGET_SOCK': (gethostbyname(config.get(section, 'TARGET_IP')), config.getint(section, 'TARGET_PORT')),
                         'TARGET_IP': gethostbyname(config.get(section, 'TARGET_IP')),
                         'TARGET_PORT': config.getint(section, 'TARGET_PORT'),
+			'BOTH_SLOTS': config.getboolean(section, 'BOTH_SLOTS'),
                         'USE_ACL': config.getboolean(section, 'USE_ACL'),
                         'SUB_ACL': config.get(section, 'SUB_ACL'),
                         'TG1_ACL': config.get(section, 'TGID_ACL'),

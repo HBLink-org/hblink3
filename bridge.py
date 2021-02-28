@@ -1051,7 +1051,9 @@ class routerHBP(HBSYSTEM):
             else:
                 self.unit_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
         elif _call_type == 'vcsbk':
-            logger.debug('CSBK recieved, but HBlink does not process them currently')
+            #logger.debug('CSBK recieved, but HBlink does not process them currently')
+            logger.debug('CSBK recieved, routing to ' + str(int_id(_dst_id)))
+            self.group_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _frame_type, _dtype_vseq, _stream_id, _data)
         else:
             logger.error('Unknown call type recieved -- not processed')
 

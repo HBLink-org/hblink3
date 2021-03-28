@@ -18,6 +18,8 @@
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
 
+##  IPv6 support contributed by Dan Srebnick, K2IE <k2ie@k2ie.net>
+
 '''
 This module generates the configuration data structure for hblink.py and
 assoicated programs that use it. It has been seaparated into a different
@@ -30,7 +32,7 @@ import configparser
 import sys
 import const
 
-from socket import gethostbyname
+from socket import getaddrinfo
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS'
@@ -159,11 +161,11 @@ def build_config(_config_file):
                         'MODE': config.get(section, 'MODE'),
                         'ENABLED': config.getboolean(section, 'ENABLED'),
                         'LOOSE': config.getboolean(section, 'LOOSE'),
-                        'SOCK_ADDR': (gethostbyname(config.get(section, 'IP')), config.getint(section, 'PORT')),
-                        'IP': gethostbyname(config.get(section, 'IP')),
+#                        'SOCK_ADDR': getaddrinfo(config.get(section, 'IP'), config.getint(section, 'PORT'), proto=17)[0][4],
+                        'IP': getaddrinfo(config.get(section, 'IP'), 0)[0][4][0],
                         'PORT': config.getint(section, 'PORT'),
-                        'MASTER_SOCKADDR': (gethostbyname(config.get(section, 'MASTER_IP')), config.getint(section, 'MASTER_PORT')),
-                        'MASTER_IP': gethostbyname(config.get(section, 'MASTER_IP')),
+                        'MASTER_SOCKADDR': getaddrinfo(config.get(section, 'MASTER_IP'), config.getint(section, 'MASTER_PORT'), proto=17)[0][4],
+                        'MASTER_IP': getaddrinfo(config.get(section, 'MASTER_IP'), 0)[0][4][0],
                         'MASTER_PORT': config.getint(section, 'MASTER_PORT'),
                         'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE'), 'utf-8'),
                         'CALLSIGN': bytes(config.get(section, 'CALLSIGN').ljust(8)[:8], 'utf-8'),
@@ -204,11 +206,11 @@ def build_config(_config_file):
                         'MODE': config.get(section, 'MODE'),
                         'ENABLED': config.getboolean(section, 'ENABLED'),
                         'LOOSE': config.getboolean(section, 'LOOSE'),
-                        'SOCK_ADDR': (gethostbyname(config.get(section, 'IP')), config.getint(section, 'PORT')),
-                        'IP': gethostbyname(config.get(section, 'IP')),
+#                        'SOCK_ADDR': ( getaddrinfo(config.get(section, 'IP'), 0)[0][4][0], config.getint(section, 'PORT') ),
+                        'IP': getaddrinfo(config.get(section, 'IP'), 0)[0][4][0],
                         'PORT': config.getint(section, 'PORT'),
-                        'MASTER_SOCKADDR': (gethostbyname(config.get(section, 'MASTER_IP')), config.getint(section, 'MASTER_PORT')),
-                        'MASTER_IP': gethostbyname(config.get(section, 'MASTER_IP')),
+                        'MASTER_SOCKADDR': ( getaddrinfo(config.get(section, 'MASTER_IP'), 0)[0][4][0], config.getint(section, 'MASTER_PORT') ),
+                        'MASTER_IP': getaddrinfo(config.get(section, 'MASTER_IP'), 0)[0][4][0],
                         'MASTER_PORT': config.getint(section, 'MASTER_PORT'),
                         'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE'), 'utf-8'),
                         'CALLSIGN': bytes(config.get(section, 'CALLSIGN').ljust(8)[:8], 'utf-8'),
@@ -251,7 +253,7 @@ def build_config(_config_file):
                         'ENABLED': config.getboolean(section, 'ENABLED'),
                         'REPEAT': config.getboolean(section, 'REPEAT'),
                         'MAX_PEERS': config.getint(section, 'MAX_PEERS'),
-                        'IP': gethostbyname(config.get(section, 'IP')),
+                        'IP': getaddrinfo(config.get(section, 'IP'), 0)[0][4][0],
                         'PORT': config.getint(section, 'PORT'),
                         'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE'), 'utf-8'),
                         'GROUP_HANGTIME': config.getint(section, 'GROUP_HANGTIME'),
@@ -268,11 +270,11 @@ def build_config(_config_file):
                         'MODE': config.get(section, 'MODE'),
                         'ENABLED': config.getboolean(section, 'ENABLED'),
                         'NETWORK_ID': config.getint(section, 'NETWORK_ID').to_bytes(4, 'big'),
-                        'IP': gethostbyname(config.get(section, 'IP')),
+                        'IP': getaddrinfo(config.get(section, 'IP'), 0)[0][4][0],
                         'PORT': config.getint(section, 'PORT'),
                         'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE').ljust(20,'\x00')[:20], 'utf-8'),
-                        'TARGET_SOCK': (gethostbyname(config.get(section, 'TARGET_IP')), config.getint(section, 'TARGET_PORT')),
-                        'TARGET_IP': gethostbyname(config.get(section, 'TARGET_IP')),
+                        'TARGET_SOCK': ( getaddrinfo(config.get(section, 'TARGET_IP'), 0)[0][4][0], config.getint(section, 'TARGET_PORT') ),
+                        'TARGET_IP': getaddrinfo(config.get(section, 'TARGET_IP'), 0)[0][4][0],
                         'TARGET_PORT': config.getint(section, 'TARGET_PORT'),
                         'BOTH_SLOTS': config.getboolean(section, 'BOTH_SLOTS'),
                         'USE_ACL': config.getboolean(section, 'USE_ACL'),

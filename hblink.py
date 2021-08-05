@@ -695,6 +695,10 @@ class HBSYSTEM(DatagramProtocol):
                     self._stats['CONNECTION'] = 'NO'
                     logger.info('(%s) MSTCL Recieved', self._system)
 
+            elif _command == RPTS:
+              if _data[:7] == RPTSBKN:
+                logger.info('(%s) Recieved Site Beacon with Repeater ID: \'%s\'', self._system, int_id(_data[7:]))
+
             else:
                 logger.error('(%s) Received an invalid command in packet: %s', self._system, ahex(_data))
 

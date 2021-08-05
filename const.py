@@ -68,6 +68,8 @@ RPTC    = b'RPTC'
 RPTP    = b'RPTP'
 RPTA    = b'RPTA'
 RPTO    = b'RPTO'
+RPTS    = b'RPTS'
+RPTSBKN = b'RPTSBKN'
 
 
 # Higheset peer ID permitted by HBP

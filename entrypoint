@@ -1,0 +1,4 @@
+#!/bin/sh
+
+cd /opt/hblink3
+python /opt/hblink3/bridge.py -c hblink.cfg -r rules.py

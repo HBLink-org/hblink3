@@ -9,7 +9,7 @@ A voluntary registrty for HBlink systems with public access has been created at 
 
 ---
 
-## PROJECT: Open Source HomeBrew Repeater Proctol Client/Master. ##
+## PROJECT: Open Source HomeBrew Repeater Protocol Client/Master. ##
 
 **UPDATES:**
 

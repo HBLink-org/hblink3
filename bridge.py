@@ -687,7 +687,7 @@ class routerHBP(HBSYSTEM):
                 if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
 
                     for _target in BRIDGES[_bridge]:
-                        if _target['SYSTEM'] != self._system:
+                        if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
                             if _target['ACTIVE']:
                                 _target_status = systems[_target['SYSTEM']].STATUS
                                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]

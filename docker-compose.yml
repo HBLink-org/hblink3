@@ -1,0 +1,14 @@
+version: '2.4'
+services:
+    hblink3:
+        container_name: hblink
+        volumes:
+            - '/etc/hblink3/hblink.cfg:/opt/hblink3/hblink.cfg'
+            - '/var/log/hblink/hblink.log:/opt/hblink3/hblink.log'
+            - '/etc/hblink3/rules.py:/opt/hblink3/rules.py'
+        ports:
+            - '62030:62030/udp'
+            - '62031-62051:62031-62051/udp'
+            - '4321:4321/tcp'
+        image: 'shaymez/hblink3:latest'
+        restart: "unless-stopped"

@@ -28,6 +28,7 @@ This document assumes the reader is familiar with Linux/UNIX, the Python program
 
 **Using docker version**
 
+Docker file included for own image build
 To work with provided docker setup you will need:
 * A private repository with your configuration files (all .cfg files in repo will be copyed to the application root directory on start up)
 * A service user able to read your private repository (or be brave and publish your configuration, or be really brave and give your username and password to the docker)
@@ -38,18 +39,19 @@ Build your own image from source
 
 ```bash
 
-docker build . -t millaguie/hblink:3.0.0
+docker build . -t hblink3/hblink3:latest
 
 ```
 
-Or user a prebuilt one in docker hub: millaguie/hblink:3.0.0
+Or user a prebuilt one in docker hub: shaymez/hblink3:latest
+This image is multi-arch
 
 Wake up your container
 
 ```bash
 touch /var/log/hblink.log
-chown 65000  /var/log/hblink.log
- run -v /var/log/hblink.log:/var/log/hblink.log -e GIT_USER=$USER -e GIT_PASSWORD=$PASSWORD -e GIT_REPO=$URL_TO_REPO_WITHOUT_HTTPS://  -p 54000:54000  millaguie/hblink:3.0.0
+chown 54000 -R /var/log/hblink.log
+ run -v /var/log/hblink/hblink.log:/var/log/hblink/hblink.log -e GIT_USER=$USER -e GIT_PASSWORD=$PASSWORD -e GIT_REPO=$URL_TO_REPO_WITHOUT_HTTPS://  -p 54000:54000  shaymez/hblink3:latest
  ```
 
 **MORE DOCUMENTATION TO COME**

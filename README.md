@@ -11,7 +11,7 @@ A voluntary registrty for HBlink systems with public access has been created at 
 
 ## PROJECT: Open Source HomeBrew Repeater Protocol Client/Master. ##
 
-**UPDATES:**
+**UPDATES:** IPv6 support has been added thanks to Dan Srebnick, K2IE.  The IP: field in applicable hblink.cfg stanzas can no longer be left blank to indicate a bind to all available IP addresses.  Now, specify 0.0.0.0 for IPv4 only or :: for IPv4/IPv6 as appropriate. If you use a hostname for a master, peer, or OBP connection, make sure that the service you wish to connect to is also available via IPv6 when address resolution returns an IPv6 address for that hostname.  Otherwise, use an IP address.  (03/27/2021)
 
 **PURPOSE:** Thanks to the work of Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT we have an open protocol for internetworking DMR repeaters. Unfortunately, there's no generic client and/or master stacks. This project is to build an open-source, python-based implementation. You are free to use this software however you want, however we ask that you provide attribution in some public venue (such as project, club, organization web site). This helps us see where the software is in use and track how it is used.
 

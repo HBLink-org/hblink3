@@ -98,3 +98,6 @@ local_subscriber_ids.*
 peer_ids.*
 local_peer_ids.*
 talkgroup_ids.*
+
+# Workflows
+.github/workflows/

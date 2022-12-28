@@ -7,8 +7,8 @@ services:
             - '/var/log/hblink/hblink.log:/opt/hblink3/hblink.log'
             - '/etc/hblink3/rules.py:/opt/hblink3/rules.py'
         ports:
-            - '62030:62030/udp'
-            - '62031-62051:62031-62051/udp'
+            - '62030-62050:62030-62050/udp'
+               # TCP Port for HBmonitor
             - '4321:4321/tcp'
         image: 'shaymez/hblink3:latest'
         restart: "unless-stopped"

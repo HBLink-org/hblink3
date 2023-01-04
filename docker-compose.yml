@@ -6,6 +6,7 @@ services:
             - '/etc/hblink3/hblink.cfg:/opt/hblink3/hblink.cfg'
             - '/var/log/hblink/hblink.log:/opt/hblink3/hblink.log'
             - '/etc/hblink3/rules.py:/opt/hblink3/rules.py'
+            - '/etc/hblink3/json/:/opt/hblink3/json/'
         ports:
             - '62030-62050:62030-62050/udp'
                # TCP Port for HBmonitor

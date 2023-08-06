@@ -11,6 +11,7 @@ The first level (e.g. "WORLDWIDE" or "STATEWIDE" in the examples) is the name of
 bridge. This is any arbitrary ASCII text string you want to use. Under each conference bridge
 definition are the following items -- one line for each HBSystem as defined in the main HBlink
 configuration file.
+"Parrot" has been added on TG 9999 and an example subset demonstrating playback parrot feature (if enabled)
 
     * SYSTEM - The name of the sytem as listed in the main hblink configuration file (e.g. hblink.cfg)
         This MUST be the exact same name as in the main config file!!!
@@ -33,6 +34,12 @@ configuration file.
 '''
 
 BRIDGES = {
+    '9999 Parrot': [
+            {'SYSTEM': 'Hotspot-1',   'TS': 2, 'TGID': 9999, 'ACTIVE': True, 'TIMEOUT': 0, 'TO_TYPE': 'NONE',  'ON': [9999],  'OFF': [], 'RESET': []},
+            {'SYSTEM': 'Hotspot-2',   'TS': 2, 'TGID': 9999, 'ACTIVE': True, 'TIMEOUT': 0, 'TO_TYPE': 'NONE',  'ON': [9999],  'OFF': [], 'RESET': []},
+            {'SYSTEM': 'Parrot',      'TS': 2, 'TGID': 9999, 'ACTIVE': True, 'TIMEOUT': 0, 'TO_TYPE': 'NONE',  'ON': [],      'OFF': [], 'RESET': []},
+        ],
+   
     'WORLDWIDE': [
             {'SYSTEM': 'MASTER-1',    'TS': 1, 'TGID': 1,    'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'ON',  'ON': [2,], 'OFF': [9,10], 'RESET': []},
             {'SYSTEM': 'CLIENT-1',    'TS': 1, 'TGID': 3100, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'ON',  'ON': [2,], 'OFF': [9,10], 'RESET': []},

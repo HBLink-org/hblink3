@@ -8,11 +8,13 @@ services:
             - '/etc/hblink3/rules.py:/opt/hblink3/rules.py'
             - '/etc/hblink3/json/:/opt/hblink3/json/'
         ports:
+               # Master Ports (99 Masters)
+            - '54000-54099:5400-54099/udp'
+               # MMDVM & OBP Ports
             - '62030-62050:62030-62050/udp'
                # TCP Port for HBmonitor
             - '4321:4321/tcp'
         image: 'shaymez/hblink3:latest'
         restart: "unless-stopped"
         environment:
-            - 'PARROT_ENABLE=0'
-
+            - 'PARROT_ENABLE=1'

@@ -3,9 +3,10 @@ cd /opt/hblink3
 
 if [ "$PARROT_ENABLE" == 1 ]
 then
-     echo 'Staring HBlink with Parrot.....'
+     echo 'Starting HBlink with Parrot.....'
      python /opt/hblink3/bridge.py -c hblink.cfg -r rules.py &
      python /opt/hblink3/playback.py -c playback.cfg
 else
+     echo 'Starting HBlink.....'
      python /opt/hblink3/bridge.py -c hblink.cfg -r rules.py
 fi

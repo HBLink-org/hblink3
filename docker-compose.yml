@@ -14,5 +14,5 @@ services:
         image: 'shaymez/hblink3:latest'
         restart: "unless-stopped"
         environment:
-            - 'PARROT_ENABLE=1'
+            - 'PARROT_ENABLE=0'
 

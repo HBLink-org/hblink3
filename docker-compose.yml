@@ -13,3 +13,6 @@ services:
             - '4321:4321/tcp'
         image: 'shaymez/hblink3:latest'
         restart: "unless-stopped"
+        environment:
+            - 'PARROT_ENABLE=1'
+

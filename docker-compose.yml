@@ -9,7 +9,7 @@ services:
             - '/etc/hblink3/json/:/opt/hblink3/json/'
         ports:
                # Master Ports (99 Masters)
-            - '54000-54099:5400-54099/udp'
+            - '54000-54099:54000-54099/udp'
                # MMDVM & OBP Ports
             - '62030-62050:62030-62050/udp'
                # TCP Port for HBmonitor

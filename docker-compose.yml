@@ -6,9 +6,15 @@ services:
             - '/etc/hblink3/hblink.cfg:/opt/hblink3/hblink.cfg'
             - '/var/log/hblink/hblink.log:/opt/hblink3/hblink.log'
             - '/etc/hblink3/rules.py:/opt/hblink3/rules.py'
+            - '/etc/hblink3/json/:/opt/hblink3/json/'
         ports:
-            - '62030:62030/udp'
-            - '62031-62051:62031-62051/udp'
+               # Master Ports (99 Masters)
+            - '54000-54099:54000-54099/udp'
+               # MMDVM & OBP Ports
+            - '62030-62050:62030-62050/udp'
+               # TCP Port for HBmonitor
             - '4321:4321/tcp'
         image: 'shaymez/hblink3:latest'
         restart: "unless-stopped"
+        environment:
+            - 'PARROT_ENABLE=1'

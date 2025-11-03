@@ -125,11 +125,15 @@ class bridgeallSYSTEM(HBSYSTEM):
                 self.STATUS[_slot]['RX_SEQ'] = _seq
                 logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
-            else:
-                # This could be much better, it will have errors during roll-over
-                if _seq > (self.STATUS[_slot]['RX_SEQ'] + 1):
-                    #print(_seq, self.STATUS[_slot]['RX_SEQ'])
-                    self.STATUS[_slot]['RX_LOSS'] += _seq - (self.STATUS[_slot]['RX_SEQ'] + 1)
+            # The below lines cause an error when rxing from a master
+            # Getting rid of these lines fixes it
+            # It looks like these just keep track of packet loss, so they might not be too important.
+            # Probably should fix these better at some point
+            #else:
+            #    # This could be much better, it will have errors during roll-over
+            #    if _seq > (self.STATUS[_slot]['RX_SEQ'] + 1):
+            #        #print(_seq, self.STATUS[_slot]['RX_SEQ'])
+            #        self.STATUS[_slot]['RX_LOSS'] += _seq - (self.STATUS[_slot]['RX_SEQ'] + 1)
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM):

@@ -1,5 +1,5 @@
-bitstring>=3.1.9
-bitarray>=2.3.5
-Twisted>=21.7.0
+bitstring>=4.0.0
+bitarray>=2.8.0
+Twisted>=24.0.0
 dmr_utils3>=0.1.29
-configparser>=5.2.0
+configparser>=7.0.0

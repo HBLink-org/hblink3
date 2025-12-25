@@ -51,7 +51,7 @@ __maintainer__ = 'Cort Buffington, N0MJS'
 __email__      = 'n0mjs@me.com'
 __status__     = 'pre-alpha'
 
-# Module gobal varaibles
+# Module global variables
 
 class playback(HBSYSTEM):
 
@@ -200,7 +200,7 @@ if __name__ == '__main__':
     
     # ID ALIAS CREATION
     # Download
-    if CONFIG['ALIASES']['TRY_DOWNLOAD'] == True:
+    if CONFIG['ALIASES']['TRY_DOWNLOAD']:
         # Try updating peer aliases file
         result = try_download(CONFIG['ALIASES']['PATH'], CONFIG['ALIASES']['PEER_FILE'], CONFIG['ALIASES']['PEER_URL'], CONFIG['ALIASES']['STALE_TIME'])
         logger.info(result)

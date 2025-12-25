@@ -27,7 +27,7 @@ works stand-alone before troubleshooting any applications that use it. It has
 sufficient logging to be used standalone as a troubleshooting application.
 '''
 
-# Specifig functions from modules we need
+# Specific functions from modules we need
 from binascii import b2a_hex as ahex
 from binascii import a2b_hex as bhex
 from random import randint
@@ -388,7 +388,7 @@ class HBSYSTEM(DatagramProtocol):
                         return
 
                 # The basic purpose of a master is to repeat to the peers
-                if self._config['REPEAT'] == True:
+                if self._config['REPEAT']:
                     pkt = [_data[:11], '', _data[15:]]
                     for _peer in self._peers:
                         if _peer != _peer_id:
@@ -466,7 +466,7 @@ class HBSYSTEM(DatagramProtocol):
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                 logger.warning('(%s) Login challenge from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
 
-        elif _command == RPTC:    # Repeater is sending it's configuraiton OR disconnecting
+        elif _command == RPTC:    # Repeater is sending it's configuration OR disconnecting
             if _data[:5] == RPTCL:    # Disconnect command
                 _peer_id = _data[5:9]
                 if _peer_id in self._peers \
@@ -752,7 +752,7 @@ class reportFactory(Factory):
 # ID ALIAS CREATION
 # Download
 def mk_aliases(_config):
-    if _config['ALIASES']['TRY_DOWNLOAD'] == True:
+    if _config['ALIASES']['TRY_DOWNLOAD']:
         # Try updating peer aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'], _config['ALIASES']['PEER_URL'], _config['ALIASES']['STALE_TIME'])
         logger.info('(GLOBAL) %s', result)

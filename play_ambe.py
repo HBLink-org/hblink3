@@ -42,7 +42,6 @@ from voice_lib import words
 
 # Stuff for socket reporting
 import pickle
-# REMOVE LATER from datetime import datetime
 # The module needs logging, but handlers, etc. are controlled by the parent
 import logging
 logger = logging.getLogger(__name__)
@@ -56,7 +55,7 @@ __license__    = 'GNU GPLv3'
 __maintainer__ = 'Cort Buffington, N0MJS'
 __email__      = 'n0mjs@me.com'
 
-# Module gobal varaibles
+# Module global variables
 
 
 class OBP(OPENBRIDGE):

@@ -20,9 +20,9 @@
 
 '''
 This module generates the configuration data structure for hblink.py and
-assoicated programs that use it. It has been seaparated into a different
-module so as to keep hblink.py easeier to navigate. This file only needs
-updated if the items in the main configuraiton file (usually hblink.cfg)
+associated programs that use it. It has been separated into a different
+module so as to keep hblink.py easier to navigate. This file only needs
+updated if the items in the main configuration file (usually hblink.cfg)
 change.
 '''
 
